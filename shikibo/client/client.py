@@ -20,6 +20,12 @@ class ThreadMailClient:
         self.settings = settings
         self.storage = storage or FileSystemStorage()
         
+        logger.info("========================================")
+        logger.info("ThreadMailClient settings:")
+        for key, val in self.settings.model_dump().items():
+            logger.info(f"  {key}: {val}")
+        logger.info("========================================")
+        
         # Ensure workspace directories exist
         self.storage.makedirs(self.settings.local_draft_root)
         self.storage.makedirs(self.settings.outbox_root)

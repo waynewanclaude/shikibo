@@ -52,8 +52,17 @@ class Settings(BaseModel):
         if not self.archive_root:
             self.archive_root = str(root / "system" / "archive")
 
-def load_settings(config_path: str = None) -> Settings:
-    """Load settings from environment variables, an optional JSON config file, or defaults."""
+def load_settings(
+    config_path: str = None,
+    root_dir: str = None,
+    user_id: str = None,
+    role: str = None,
+    use_fs_events: bool = None,
+    scan_interval: int = None
+) -> Settings:
+    """Load settings from environment variables, an optional JSON config file, or defaults.
+    All overrides are fully resolved and stabilized before the Settings object is constructed.
+    """
     data = {}
     if config_path and os.path.exists(config_path):
         import json
@@ -77,6 +86,18 @@ def load_settings(config_path: str = None) -> Settings:
                 data[key] = env_val.lower() in ("true", "1", "yes")
             else:
                 data[key] = env_val
+            
+    # Apply explicit overrides from CLI/parameters before Pydantic initialization
+    if root_dir is not None:
+        data["root_dir"] = root_dir
+    if user_id is not None:
+        data["user_id"] = user_id
+    if role is not None:
+        data["role"] = role
+    if use_fs_events is not None:
+        data["use_fs_events"] = use_fs_events
+    if scan_interval is not None:
+        data["scan_interval"] = scan_interval
             
     return Settings(**data)
 

@@ -42,6 +42,12 @@ class CoordinatorService:
         self.scan_lock = threading.Lock()
         self.observer = None
         
+        logger.info("========================================")
+        logger.info("CoordinatorService settings:")
+        for key, val in self.settings.model_dump().items():
+            logger.info(f"  {key}: {val}")
+        logger.info("========================================")
+        
         self.db_path = Path(self.settings.root_dir) / "system" / "coordinator" / "coordinator_ledger.db"
         self.storage.makedirs(self.db_path.parent)
         self.dead_letter_path = Path(self.settings.root_dir) / "system" / "coordinator" / "dead_letter"

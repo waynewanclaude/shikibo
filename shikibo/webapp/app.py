@@ -18,42 +18,18 @@ logger = logging.getLogger("shikibo.webapp")
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
-# Load global settings and components
-settings = load_settings()
-storage = FileSystemStorage()
-client = ThreadMailClient(settings, storage)
-coordinator = CoordinatorService(settings, storage)
-
-# Automatically register our client's user identity in the coordinator list for easy local testing
-coordinator.register_user(settings.user_id)
+# Placeholders for global settings and components (reassigned upon run_server execution)
+settings = None
+storage = None
+client = None
+coordinator = None
+observer = None
 
 sse_clients = []
 
 def notify_clients(event_name="refresh"):
     for q in list(sse_clients):
         q.put(event_name)
-
-if settings.use_fs_events:
-    from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler
-    
-    class ThreadsWatcherHandler(FileSystemEventHandler):
-        def on_any_event(self, event):
-            if event.is_directory:
-                return
-            name = Path(event.src_path).name
-            if name.startswith(".") or name.startswith("~") or name.endswith(".tmp"):
-                return
-            notify_clients("refresh")
-            
-    threads_dir = Path(settings.thread_root)
-    storage.makedirs(threads_dir)
-    
-    handler = ThreadsWatcherHandler()
-    observer = Observer()
-    observer.schedule(handler, path=str(threads_dir), recursive=True)
-    observer.start()
-    logger.info(f"[Watcher] WebApp streaming events enabled, watching {threads_dir}")
 
 # Helper to secure serve attachments
 @app.route("/api/attachments/<thread_id>/<msg_folder>/<filename>")
@@ -275,18 +251,49 @@ def datetime_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
 
-def run_server(port: int = 5000, debug: bool = False):
+def run_server(settings_obj, port: int = 5000, debug: bool = False):
     import socket
-    global settings, storage, client, coordinator
-    settings = load_settings()
+    global settings, storage, client, coordinator, observer
+    settings = settings_obj
+    
     from shikibo.config import setup_logging
     setup_logging(settings)
+    
+    # Dump finalized parameters right before initializing the WebApp components
+    logger.info("========================================")
+    logger.info("INITIALIZING SHIKIBO WEBAPP SYSTEM:")
+    for key, val in settings.model_dump().items():
+        logger.info(f"  {key}: {val}")
+    logger.info("========================================")
     
     storage = FileSystemStorage()
     client = ThreadMailClient(settings, storage)
     coordinator = CoordinatorService(settings, storage)
     coordinator.register_user(settings.user_id)
     
+    # Initialize filesystem watcher for SSE client refresh if enabled
+    if settings.use_fs_events:
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+        
+        class ThreadsWatcherHandler(FileSystemEventHandler):
+            def on_any_event(self, event):
+                if event.is_directory:
+                    return
+                name = Path(event.src_path).name
+                if name.startswith(".") or name.startswith("~") or name.endswith(".tmp"):
+                    return
+                notify_clients("refresh")
+                
+        threads_dir = Path(settings.thread_root)
+        storage.makedirs(threads_dir)
+        
+        handler = ThreadsWatcherHandler()
+        observer = Observer()
+        observer.schedule(handler, path=str(threads_dir), recursive=True)
+        observer.start()
+        logger.info(f"[Watcher] WebApp streaming events enabled, watching {threads_dir}")
+        
     # Automatically find an available port if the specified port is occupied
     actual_port = port
     while actual_port < 65535:

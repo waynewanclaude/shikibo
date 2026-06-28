@@ -101,19 +101,19 @@ def main():
     
     args = parser.parse_args()
     
-    # Load settings with optional overrides
-    settings = load_settings(args.config)
-    if args.user:
-        settings.user_id = args.user
-    if args.role:
-        settings.role = args.role
-    if args.root_dir:
-        settings.root_dir = args.root_dir
-    if args.poll_only:
-        settings.use_fs_events = False
-    
-    # Re-initialize path structure based on overrides
-    settings.model_post_init(None)
+    # Load settings with optional overrides applied before instantiation (stabilized configuration)
+    scan_interval_override = None
+    if args.command == "service" and getattr(args, "interval", None) is not None:
+        scan_interval_override = args.interval
+
+    settings = load_settings(
+        config_path=args.config,
+        root_dir=args.root_dir,
+        user_id=args.user,
+        role=args.role,
+        use_fs_events=False if args.poll_only else None,
+        scan_interval=scan_interval_override
+    )
     
     from shikibo.config import setup_logging
     setup_logging(settings)
@@ -125,24 +125,13 @@ def main():
     
     if args.command == "webapp":
         console.print(f"[bold green]Launching WebApp (requesting port {args.port}) as user '{settings.user_id}'" + (f" and role '{settings.role}'" if settings.role else "") + "...[/bold green]")
-        # Set settings globally for Flask server loading
-        os.environ["SHIKIBO_ROOT_DIR"] = settings.root_dir
-        os.environ["SHIKIBO_USER_ID"] = settings.user_id
-        os.environ["SHIKIBO_LOG_FILE"] = settings.log_file
-        if settings.role:
-            os.environ["SHIKIBO_ROLE"] = settings.role
-        if settings.use_fs_events:
-            os.environ["SHIKIBO_USE_FS_EVENTS"] = "true"
-        else:
-            os.environ["SHIKIBO_USE_FS_EVENTS"] = "false"
-        run_server(port=args.port, debug=args.debug)
+        # Run in-process with the stabilized settings directly
+        run_server(settings, port=args.port, debug=args.debug)
         
     elif args.command == "scan":
         run_single_scan(settings, storage)
         
     elif args.command == "service":
-        if args.interval:
-            settings.scan_interval = args.interval
         run_coordinator_service(settings, storage)
         
     elif args.command == "archive":
