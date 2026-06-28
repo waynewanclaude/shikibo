@@ -27,6 +27,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-save-draft").addEventListener("click", saveDraft);
     document.getElementById("btn-publish").addEventListener("click", publishMessage);
     document.getElementById("btn-mark-done").addEventListener("click", markThreadDone);
+    
+    // Enter to publish, Shift+Enter to newline
+    document.getElementById("composer-body").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            publishMessage();
+        }
+    });
 });
 
 async function loadConfig() {
