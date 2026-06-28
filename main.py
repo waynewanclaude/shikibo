@@ -81,7 +81,8 @@ def main():
     subparsers.add_parser("scan", help="Run a single one-shot coordinator scan")
     
     # Service parser
-    subparsers.add_parser("service", help="Run coordinator as a timed background daemon service")
+    service_parser = subparsers.add_parser("service", help="Run coordinator as a timed background daemon service")
+    service_parser.add_argument("-i", "--interval", type=int, help="Override background scan interval in seconds")
     
     # Archive parser
     archive_parser = subparsers.add_parser("archive", help="Archive a thread folder into a ZIP package")
@@ -115,6 +116,8 @@ def main():
         run_single_scan(settings, storage)
         
     elif args.command == "service":
+        if args.interval:
+            settings.scan_interval = args.interval
         run_coordinator_service(settings, storage)
         
     elif args.command == "archive":

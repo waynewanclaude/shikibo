@@ -17,7 +17,7 @@ class Settings(BaseModel):
     archive_root: str = Field(default="")
     
     # Coordinator configuration
-    scan_interval: int = Field(default=900)  # seconds (15 minutes)
+    scan_interval: int = Field(default=10)  # seconds between background scans
 
     def model_post_init(self, __context) -> None:
         if not self.display_name:
