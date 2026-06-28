@@ -26,11 +26,11 @@ def test_integration():
     
     # Specific test paths to clean up
     cleanup_paths = [
-        os.path.join(test_root, "threads", "T_20260627_TEST"),
+        os.path.join(test_root, "system", "threads", "T_20260627_TEST"),
         os.path.join(test_root, "users", "test_runner"),
         os.path.join(test_root, "drafts", "test_runner"),
-        os.path.join(test_root, "config", "registered_users.txt"),
-        os.path.join(test_root, "coordinator", "coordinator_ledger.db")
+        os.path.join(test_root, "system", "config", "registered_users.txt"),
+        os.path.join(test_root, "system", "coordinator", "coordinator_ledger.db")
     ]
     for path in cleanup_paths:
         if storage.exists(path):

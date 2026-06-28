@@ -62,7 +62,7 @@ Drafts are private, mutable workspaces stored locally (`drafts/<user_id>/`). Whe
 To support structured collaboration, top-level users can have dynamically created sub-user roles (e.g. `test_user/developer`).
 *   **Why Users Have Sub-Folders**:
     1.  **Organizational Division**: Allows a single participant to maintain different roles (e.g., project lead, reviewer, developer) with isolated drafts, outboxes, and receipts.
-    2.  **Distributed Administration**: The coordinator only needs to register the top-level user (in `config/registered_users.txt`). Top-level users can create any roles they wish locally without requiring the coordinator to update its registered user configs.
+    2.  **Distributed Administration**: The coordinator only needs to register the top-level user (in `system/config/registered_users.txt`). Top-level users can create any roles they wish locally without requiring the coordinator to update its registered user configs.
     3.  **Security**: The coordinator validates that the user identity (e.g. `user_id/role`) matches the directory structure `users/user_id/role/outbox/` to enforce that users cannot publish messages under other users' folders or unregistered accounts.
 *   **Directory Structure**:
     *   Top-Level: `users/<user_id>/outbox/` and `users/<user_id>/receipts/`
@@ -115,14 +115,14 @@ To establish a clear operational framework and avoid conflicts in the multi-agen
     *   *Reviewers*: `agent_security_reviewer`, `agent_performance_reviewer`, and `agent_style_reviewer`.
 *   **Thread Closure Authority**: We employ a "Suggester" model. Worker agents suggest archiving when work is complete (e.g. `@agent_project_lead task complete, suggest archive`). Only the human user (via WebApp) or the `agent_project_lead` has the authority to change the thread status to `DONE` and trigger the coordinator to compile the archive.
 *   **Human-in-the-Loop Approvals**: Verification is text-based. When human users review a completed task, they reply to the thread with approval keywords (e.g., "Approve", "LGTM", "Verified"). The `agent_project_lead` monitors for these messages sent by the human user's ID, parses the approval, and marks the thread `DONE` automatically.
-*   **Team Roster & Authorization Keys**: To ensure safety and prevent token waste, the team organization is managed statically via a filesystem config file (`config/roster.json`) rather than relying on LLM reasoning:
+*   **Team Roster & Authorization Keys**: To ensure safety and prevent token waste, the team organization is managed statically via a filesystem config file (`system/config/roster.json`) rather than relying on LLM reasoning:
     *   **Structure**: The roster lists all active agents, their roles, and explicitly designates the identity holding the `TEAM_LEAD` role (which carries the authority to approve task claims and close threads).
-    *   **Read-Only Access**: All agents read `config/roster.json` at startup to identify team roles, capabilities, and the authorized `TEAM_LEAD` identity.
-    *   **Write-Protection**: Only the human user can modify the root `config/roster.json` file directly via the filesystem.
+    *   **Read-Only Access**: All agents read `system/config/roster.json` at startup to identify team roles, capabilities, and the authorized `TEAM_LEAD` identity.
+    *   **Write-Protection**: Only the human user can modify the root `system/config/roster.json` file directly via the filesystem.
     *   **Sub-Agent Lifecycle**: The agent playing the `TEAM_LEAD` role can maintain its own "personnel" registry in its private local workspace and spin up/down worker sub-agents dynamically, but it is strictly prohibited from modifying the root `roster.json` or elevating any sub-agent to the `TEAM_LEAD` role.
     *   **Implicit Activation**: Spun up worker sub-agents do not publish thread log announcements or register in any central shared registry file when activated. Their presence is completely implicit; they simply begin reading the thread messages and posting bids when tasks require their attention, preventing thread log clutter.
 *   **Multi-Agent Security & OS Delegation**: To avoid complex custom application security and leverage mature, robust boundaries, `shikibo` delegates security enforcement directly to the underlying Operating System's native permission model (POSIX permissions or NTFS ACLs):
     *   **No Custom Sandboxing Code**: The codebase does not implement virtual permission layers or virtual sandboxes. If running under a single shared system account or cloud sync folder, all agents share full read/write access.
     *   **Optional System-Level Isolation**: For users who require added security, the administrator manually configures native filesystem permissions:
-        *   The coordinator process runs under a system account that owns and has write permissions over the thread directories (`threads/`), the index (`index/`), the archives (`archive/`), and global configs (`config/`).
+        *   The coordinator process runs under a system account that owns and has write permissions over the thread directories (`system/threads/`), the index (`system/index/`), the archives (`system/archive/`), and global configs (`system/config/`).
         *   Each worker agent process runs under a separate system user account, granted write permissions *only* to its designated outbox (`users/<user_id>/<role>/outbox/`) and local draft (`drafts/<user_id>/<role>/`) directories. All other shared directories are configured as read-only.

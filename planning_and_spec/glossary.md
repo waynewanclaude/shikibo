@@ -24,7 +24,7 @@ This document defines the core terminology used in the **Distributed ThreadMail 
 
 ### A. How to Register Users
 The coordinator only processes users listed in the registered users configuration:
-1.  Locate the text file at: `G:\My Drive\shikibo_test\config\registered_users.txt`
+1.  Locate the text file at: `G:\My Drive\shikibo_test\system\config\registered_users.txt`
 2.  Open the file and add the username of the user (one username per line):
     ```
     agent_reviewer

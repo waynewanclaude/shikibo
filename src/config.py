@@ -42,11 +42,11 @@ class Settings(BaseModel):
             if not self.receipt_root:
                 self.receipt_root = str(root / "users" / self.user_id / "receipts")
         if not self.thread_root:
-            self.thread_root = str(root / "threads")
+            self.thread_root = str(root / "system" / "threads")
         if not self.index_root:
-            self.index_root = str(root / "index")
+            self.index_root = str(root / "system" / "index")
         if not self.archive_root:
-            self.archive_root = str(root / "archive")
+            self.archive_root = str(root / "system" / "archive")
 
 def load_settings(config_path: str = None) -> Settings:
     """Load settings from environment variables, an optional JSON config file, or defaults."""

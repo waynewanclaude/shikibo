@@ -238,18 +238,18 @@ The global coordinator is the only component that distributes User outbox messag
 
 ### 3.2 Coordinator Input & Output
 *   **Inputs**:
-    *   `config/registered_users.txt` (simple text file containing one registered top-level username per line)
+    *   `system/config/registered_users.txt` (simple text file containing one registered top-level username per line)
     *   `users/<user_id>/outbox/`
-    *   `threads/`
-    *   `index/`
-    *   `archive/`
+    *   `system/threads/`
+    *   `system/index/`
+    *   `system/archive/`
 *   **Outputs**:
-    *   `threads/<thread_id>/messages/`
+    *   `system/threads/<thread_id>/messages/`
     *   `users/<user_id>/receipts/`
-    *   `index/`
-    *   `archive/`
+    *   `system/index/`
+    *   `system/archive/`
     *   Coordinator state / ledger
-    *   `coordinator/dead_letter/`
+    *   `system/coordinator/dead_letter/`
 
 ### 3.3 Coordinator Distribution Behavior
 1.  Detect package and verify it is stable.

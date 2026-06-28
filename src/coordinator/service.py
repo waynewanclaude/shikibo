@@ -16,13 +16,13 @@ class CoordinatorService:
         self.settings = settings
         self.storage = storage or FileSystemStorage()
         
-        self.db_path = Path(self.settings.root_dir) / "coordinator" / "coordinator_ledger.db"
+        self.db_path = Path(self.settings.root_dir) / "system" / "coordinator" / "coordinator_ledger.db"
         self.storage.makedirs(self.db_path.parent)
-        self.dead_letter_path = Path(self.settings.root_dir) / "coordinator" / "dead_letter"
+        self.dead_letter_path = Path(self.settings.root_dir) / "system" / "coordinator" / "dead_letter"
         self.storage.makedirs(self.dead_letter_path)
         
         # Ensure registered_users.txt exists
-        self.registered_users_file = Path(self.settings.root_dir) / "config" / "registered_users.txt"
+        self.registered_users_file = Path(self.settings.root_dir) / "system" / "config" / "registered_users.txt"
         self.storage.makedirs(self.registered_users_file.parent)
         if not self.storage.exists(self.registered_users_file):
             self.storage.write_file_new(self.registered_users_file, "")
