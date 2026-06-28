@@ -1,9 +1,11 @@
 import os
 import getpass
 from pathlib import Path
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+ 
 class Settings(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     user_id: str = Field(default_factory=getpass.getuser)
     role: str = Field(default="")
     display_name: str = Field(default="")
@@ -24,33 +26,50 @@ class Settings(BaseModel):
     # Logging configuration
     log_file: str = Field(default=r"C:\temp\shikibo.log")
 
-    def model_post_init(self, __context) -> None:
-        if not self.display_name:
-            self.display_name = self.user_id
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_paths(cls, data):
+        if isinstance(data, dict):
+            # Resolve user_id
+            if "user_id" not in data or not data["user_id"]:
+                import getpass
+                data["user_id"] = getpass.getuser()
             
-        root = Path(self.root_dir).resolve()
-        
-        # Build default paths if not explicitly overridden
-        if self.role:
-            if not self.local_draft_root:
-                self.local_draft_root = str(root / "drafts" / self.user_id / self.role)
-            if not self.outbox_root:
-                self.outbox_root = str(root / "users" / self.user_id / self.role / "outbox")
-            if not self.receipt_root:
-                self.receipt_root = str(root / "users" / self.user_id / self.role / "receipts")
-        else:
-            if not self.local_draft_root:
-                self.local_draft_root = str(root / "drafts" / self.user_id)
-            if not self.outbox_root:
-                self.outbox_root = str(root / "users" / self.user_id / "outbox")
-            if not self.receipt_root:
-                self.receipt_root = str(root / "users" / self.user_id / "receipts")
-        if not self.thread_root:
-            self.thread_root = str(root / "system" / "threads")
-        if not self.index_root:
-            self.index_root = str(root / "system" / "index")
-        if not self.archive_root:
-            self.archive_root = str(root / "system" / "archive")
+            # Resolve display_name
+            if "display_name" not in data or not data["display_name"]:
+                data["display_name"] = data["user_id"]
+                
+            # Resolve root_dir
+            root_dir_val = data.get("root_dir", r"G:\My Drive\shikibo_test")
+            root = Path(root_dir_val).resolve()
+            data["root_dir"] = str(root)
+            
+            uid = data["user_id"]
+            role = data.get("role", "")
+            
+            # Build default paths if not explicitly configured
+            if role:
+                if not data.get("local_draft_root"):
+                    data["local_draft_root"] = str(root / "drafts" / uid / role)
+                if not data.get("outbox_root"):
+                    data["outbox_root"] = str(root / "users" / uid / role / "outbox")
+                if not data.get("receipt_root"):
+                    data["receipt_root"] = str(root / "users" / uid / role / "receipts")
+            else:
+                if not data.get("local_draft_root"):
+                    data["local_draft_root"] = str(root / "drafts" / uid)
+                if not data.get("outbox_root"):
+                    data["outbox_root"] = str(root / "users" / uid / "outbox")
+                if not data.get("receipt_root"):
+                    data["receipt_root"] = str(root / "users" / uid / "receipts")
+                    
+            if not data.get("thread_root"):
+                data["thread_root"] = str(root / "system" / "threads")
+            if not data.get("index_root"):
+                data["index_root"] = str(root / "system" / "index")
+            if not data.get("archive_root"):
+                data["archive_root"] = str(root / "system" / "archive")
+        return data
 
 def load_settings(
     config_path: str = None,
@@ -98,7 +117,7 @@ def load_settings(
         data["use_fs_events"] = use_fs_events
     if scan_interval is not None:
         data["scan_interval"] = scan_interval
-            
+        
     return Settings(**data)
 
 def setup_logging(settings: Settings) -> None:
