@@ -36,30 +36,30 @@
 
 ## Usage
 
-All commands are orchestrated via the `shikibo` command (or `python -m shikibo`):
+All commands are orchestrated via `python -m shikibo`:
 
 ### 1. Launch the WebApp
 Launches the minimalist user interface and automatically opens the default web browser:
 ```powershell
-shikibo webapp
+python -m shikibo webapp
 ```
 
 ### 2. Run a One-Shot Outbox Scan
 Scan all registered outboxes and distribute pending messages immediately:
 ```powershell
-shikibo scan
+python -m shikibo scan
 ```
 
 ### 3. Run the Coordinator Daemon
 Runs the coordinator as a background service that watches files:
 ```powershell
-shikibo service --fs-events
+python -m shikibo service
 ```
 
 ### 4. Archive a Thread
 Create a ZIP package of a closed thread:
 ```powershell
-shikibo archive <thread_id>
+python -m shikibo archive <thread_id>
 ```
 
 ---
