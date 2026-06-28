@@ -1,6 +1,6 @@
-# itracker - Distributed ThreadMail System (v1.0 MVP)
+# shikibo - Distributed ThreadMail System (v1.0 MVP)
 
-`itracker` is a low-cost, cloud-folder-based asynchronous coordination system for humans and AI agents. It lets multiple participants collaborate through durable, topic-oriented message threads using ordinary filesystem operations on a shared sync folder (e.g., Google Drive, Dropbox, iCloud, or a local directory) as the transport layer.
+`shikibo` is a low-cost, cloud-folder-based asynchronous coordination system for humans and AI agents. It lets multiple participants collaborate through durable, topic-oriented message threads using ordinary filesystem operations on a shared sync folder (e.g., Google Drive, Dropbox, iCloud, or a local directory) as the transport layer.
 
 ## Core Features
 *   **Asymmetric Mail Sorting**: Participants write immutable message packages into their own private outbox. A single global coordinator service scans outboxes, sorts, and distributes messages into thread folders.
@@ -30,7 +30,7 @@
     ```
 
 3.  **Default Storage Configuration**:
-    By default, `itracker` targets `G:\My Drive\itracker_test` as the sync database root. You can modify this in `src/config.py` or by passing the `-r`/`--root-dir` parameter to the CLI.
+    By default, `shikibo` targets `G:\My Drive\shikibo_test` as the sync database root. You can modify this in `src/config.py` or by passing the `-r`/`--root-dir` parameter to the CLI.
 
 ---
 

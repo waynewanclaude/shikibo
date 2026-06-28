@@ -41,7 +41,8 @@ async function loadConfig() {
     try {
         const res = await fetch("/api/config");
         config = await res.json();
-        document.getElementById("user-badge").textContent = `${config.display_name} (${config.user_id})`;
+        const userText = config.role ? `${config.display_name} (${config.user_id}/${config.role})` : `${config.display_name} (${config.user_id})`;
+        document.getElementById("user-badge").textContent = userText;
     } catch (e) {
         console.error("Failed to load config", e);
     }
@@ -130,7 +131,8 @@ async function loadThreadMessages(threadId) {
         }
         
         messages.forEach(msg => {
-            const isSelf = msg.source_user_id === config.user_id;
+            const configUserId = config.role ? `${config.user_id}/${config.role}` : config.user_id;
+            const isSelf = msg.source_user_id === configUserId;
             const card = document.createElement("div");
             card.className = `message-card ${isSelf ? 'self' : ''}`;
             

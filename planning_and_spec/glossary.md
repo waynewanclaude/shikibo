@@ -1,6 +1,6 @@
 # Project Glossary & End-User Guide
 
-This document defines the core terminology used in the **Distributed ThreadMail System** (`itracker`) and provides step-by-step instructions on how to manage threads, users, and message flows.
+This document defines the core terminology used in the **Distributed ThreadMail System** (`shikibo`) and provides step-by-step instructions on how to manage threads, users, and message flows.
 
 ---
 
@@ -22,15 +22,15 @@ This document defines the core terminology used in the **Distributed ThreadMail 
 
 ## 2. End-User Operations Guide
 
-### A. How to Register User Outboxes
-The coordinator only processes outboxes listed in the registered outboxes configuration:
-1.  Locate the text file at: `G:\My Drive\itracker_test\config\registered_outboxes.txt`
-2.  Open the file and add the absolute folder path of the user outbox (one path per line):
+### A. How to Register Users
+The coordinator only processes users listed in the registered users configuration:
+1.  Locate the text file at: `G:\My Drive\shikibo_test\config\registered_users.txt`
+2.  Open the file and add the username of the user (one username per line):
     ```
-    G:\My Drive\itracker_test\users\agent_reviewer\outbox
-    G:\My Drive\itracker_test\users\human_wayne\outbox
+    agent_reviewer
+    human_wayne
     ```
-3.  Save the file. The coordinator will start monitoring these paths on its next scan.
+3.  Save the file. On its next scan, the coordinator will monitor these users and dynamically discover their main outboxes and any child role outboxes.
 
 ### B. How to Create a New Topic (Thread)
 #### Via the WebApp:

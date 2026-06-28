@@ -16,8 +16,8 @@ from src.coordinator.service import CoordinatorService
 def test_integration():
     print("=== ThreadMail Integration Test ===")
     
-    # 1. Setup config pointing to G:\My Drive\itracker_test
-    test_root = r"G:\My Drive\itracker_test"
+    # 1. Setup config pointing to G:\My Drive\shikibo_test
+    test_root = r"G:\My Drive\shikibo_test"
     print(f"Using test root: {test_root}")
     
     # Clean up only specific test files/folders we create, leaving the root directory intact
@@ -81,7 +81,7 @@ def test_integration():
     
     # 3. Create draft
     print("Creating client draft...")
-    draft_id = client.create_draft(thread_id=thread_id, body="Hello, this is a test message body.")
+    draft_id = client.create_draft(thread_id=thread_id, body="Hello @test_receiver, this is a test message body.")
     
     # Add dummy attachment
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
@@ -94,7 +94,7 @@ def test_integration():
         
         # Verify draft contents
         draft_data = client.read_draft(draft_id)
-        assert draft_data["body"] == "Hello, this is a test message body."
+        assert draft_data["body"] == "Hello @test_receiver, this is a test message body."
         assert len(draft_data["attachments"]) == 1
         print("Draft read verified.")
         
@@ -105,6 +105,9 @@ def test_integration():
         
         # Check outbox package
         assert os.path.exists(outbox_path)
+        with open(os.path.join(outbox_path, "message.json"), "r") as mf:
+            meta = json.load(mf)
+            assert meta["mentions"] == ["test_receiver"]
         assert os.path.exists(os.path.join(outbox_path, "message.json"))
         assert os.path.exists(os.path.join(outbox_path, "body.md"))
         assert os.path.exists(os.path.join(outbox_path, "attachments"))
@@ -145,6 +148,55 @@ def test_integration():
         second_scan = coordinator.run_scan()
         assert second_scan["processed"] == 0
         print("Duplicate prevention verified successfully.")
+        
+        # 8. Test Role-based publishing and scanning
+        print("Testing Role-based flow...")
+        role_settings = Settings(
+            user_id=test_user_id,
+            role="developer",
+            display_name=f"Test Developer {run_id}",
+            root_dir=test_root
+        )
+        role_client = ThreadMailClient(role_settings, storage)
+        
+        # Verify role-specific draft, outbox, and receipt paths
+        assert "developer" in role_settings.local_draft_root
+        assert "developer" in role_settings.outbox_root
+        assert "developer" in role_settings.receipt_root
+        
+        # Create role draft
+        role_draft_id = role_client.create_draft(thread_id=thread_id, body="This is from developer role.")
+        
+        # Publish role draft
+        r_user_id, r_msg_id, r_outbox_path = role_client.publish_draft(role_draft_id)
+        assert r_user_id == f"{test_user_id}/developer"
+        assert os.path.exists(r_outbox_path)
+        
+        # The registered user is the top-level user 'test_user_id'
+        # Check that get_registered_outboxes includes the role outbox
+        registered_outboxes = [os.path.normpath(p) for p in coordinator.get_registered_outboxes()]
+        assert os.path.normpath(role_settings.outbox_root) in registered_outboxes
+        print("Role outbox detected in registration.")
+        
+        # Scan outboxes
+        role_scan = coordinator.run_scan()
+        assert role_scan["processed"] == 1
+        
+        # Check distributed message on thread folder
+        msg_folders_updated = os.listdir(thread_messages_dir)
+        role_folders = [f for f in msg_folders_updated if "developer" in f]
+        assert len(role_folders) == 1
+        print(f"Distributed role message folder: {role_folders[0]}")
+        
+        # Verify receipt written in role receipt path
+        role_receipts = role_client.list_receipts()
+        assert len(role_receipts) == 1
+        assert role_receipts[0]["source_user_id"] == f"{test_user_id}/developer"
+        
+        # Verify deduplication
+        role_scan_dup = coordinator.run_scan()
+        assert role_scan_dup["processed"] == 0
+        print("Role-based flow verified successfully.")
         
         print("\n=== INTEGRATION TEST PASSED SUCCESSFULLY! ===")
         

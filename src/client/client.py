@@ -233,15 +233,22 @@ class ThreadMailClient:
         body_text = draft_data["body"]
         body_hash = hashlib.sha256(body_text.encode("utf-8")).hexdigest()
         
+        user_id_val = f"{self.settings.user_id}/{self.settings.role}" if self.settings.role else self.settings.user_id
+        
+        # Extract mentions automatically from body_text (e.g. @username or @username/role)
+        # Matches alphanumeric characters, slashes, dashes, and underscores after @
+        mentions = re.findall(r"@([\w/-]+)", body_text)
+        
         # 3. Create message.json
         message_meta = {
             "schema_version": "1.0",
-            "source_user_id": self.settings.user_id,
+            "source_user_id": user_id_val,
             "source_local_message_id": msg_id,
             "target_thread_id": draft_data["thread_id"],
             "message_type": "text/markdown",
             "body_file": "body.md",
             "attachments": draft_data["attachments"],
+            "mentions": mentions,
             "local_created_at": datetime.now(timezone.utc).isoformat(),
             "content_hash": body_hash
         }
@@ -275,7 +282,7 @@ class ThreadMailClient:
         # 8. Clean up local draft
         self.delete_local_draft(draft_id)
         
-        return self.settings.user_id, msg_id, str(final_outbox_path)
+        return user_id_val, msg_id, str(final_outbox_path)
 
     # --- Thread & Receipt Reading API ---
 

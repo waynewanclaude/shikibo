@@ -39,6 +39,7 @@ def index():
 def get_config():
     return jsonify({
         "user_id": settings.user_id,
+        "role": settings.role,
         "display_name": settings.display_name,
         "root_dir": settings.root_dir,
         "local_draft_root": settings.local_draft_root,

@@ -82,7 +82,8 @@ class CoordinatorService:
                         counter = int(parts[1])
                     except ValueError:
                         counter = 0
-                    user_id = parts[2]
+                    safe_user_id = parts[2]
+                    user_id = safe_user_id.replace(".", "/", 1)
                     local_id = parts[3]
                     
                     cursor.execute("""
@@ -106,11 +107,29 @@ class CoordinatorService:
         return users
 
     def get_registered_outboxes(self) -> List[str]:
-        """Dynamically constructs outbox paths for all registered users using settings.root_dir."""
+        """Dynamically constructs outbox paths for all registered users and their roles using settings.root_dir."""
         users = self.get_registered_users()
         outboxes = []
         for user in users:
-            outboxes.append(str(Path(self.settings.root_dir) / "users" / user / "outbox"))
+            user_dir = Path(self.settings.root_dir) / "users" / user
+            # 1. Top-level outbox (if it exists)
+            outbox_path = user_dir / "outbox"
+            if self.storage.exists(outbox_path):
+                outboxes.append(os.path.normpath(str(outbox_path)))
+            
+            # 2. Role outboxes
+            if self.storage.exists(user_dir) and self.storage.is_dir(user_dir):
+                try:
+                    entries = self.storage.list_dir(user_dir)
+                    for entry in entries:
+                        if entry in ("outbox", "receipts", ".processed"):
+                            continue
+                        role_dir = user_dir / entry
+                        role_outbox = role_dir / "outbox"
+                        if self.storage.is_dir(role_dir) and self.storage.exists(role_outbox):
+                            outboxes.append(os.path.normpath(str(role_outbox)))
+                except Exception:
+                    pass
         return outboxes
 
     def register_user(self, username: str) -> None:
@@ -178,11 +197,30 @@ class CoordinatorService:
             return {"status": "malformed", "reason": "Missing required metadata fields"}
             
         # Verify that the declared source_user_id matches the owner of the outbox directory
-        expected_user_id = pkg_path.parent.parent.name
+        users_root = Path(self.settings.root_dir) / "users"
+        try:
+            rel_parts = pkg_path.relative_to(users_root).parts
+            if len(rel_parts) == 3 and rel_parts[1] == "outbox":
+                expected_user_id = rel_parts[0]
+            elif len(rel_parts) == 4 and rel_parts[2] == "outbox":
+                expected_user_id = f"{rel_parts[0]}/{rel_parts[1]}"
+            else:
+                expected_user_id = ""
+        except ValueError:
+            expected_user_id = ""
+
         if user_id != expected_user_id:
             return {
                 "status": "malformed", 
                 "reason": f"Security mismatch: source_user_id '{user_id}' does not match outbox owner directory '{expected_user_id}'"
+            }
+
+        # Verify that the top-level user is registered
+        top_level_user = user_id.split("/")[0]
+        if top_level_user not in self.get_registered_users():
+            return {
+                "status": "malformed",
+                "reason": f"Security mismatch: top-level user '{top_level_user}' is not registered"
             }
             
         # Deduplication check
@@ -209,7 +247,8 @@ class CoordinatorService:
         dist_timestamp = now_utc.strftime("%Y%m%dT%H%M%SZ")
         counter = self._get_next_thread_counter(thread_id)
         
-        dist_folder_name = f"{dist_timestamp}_{counter:06d}_{user_id}_{local_id}"
+        safe_user_id = user_id.replace("/", ".")
+        dist_folder_name = f"{dist_timestamp}_{counter:06d}_{safe_user_id}_{local_id}"
         target_message_dir = thread_dir / "messages" / dist_folder_name
         
         # 1. Copy to thread
@@ -225,7 +264,11 @@ class CoordinatorService:
 
         # 3. Write receipt to source user receipts folder
         receipt_filename = f"{local_id}_receipt.json"
-        user_receipts_dir = Path(self.settings.root_dir) / "users" / user_id / "receipts"
+        if "/" in user_id:
+            u_id, role = user_id.split("/", 1)
+            user_receipts_dir = Path(self.settings.root_dir) / "users" / u_id / role / "receipts"
+        else:
+            user_receipts_dir = Path(self.settings.root_dir) / "users" / user_id / "receipts"
         self.storage.makedirs(user_receipts_dir)
         
         receipt_data = {
@@ -259,7 +302,11 @@ class CoordinatorService:
     def write_receipt_if_missing(self, user_id: str, local_id: str, thread_id: str) -> None:
         """Rewrites a receipt if missing for a previously distributed message."""
         receipt_filename = f"{local_id}_receipt.json"
-        user_receipts_dir = Path(self.settings.root_dir) / "users" / user_id / "receipts"
+        if "/" in user_id:
+            u_id, role = user_id.split("/", 1)
+            user_receipts_dir = Path(self.settings.root_dir) / "users" / u_id / role / "receipts"
+        else:
+            user_receipts_dir = Path(self.settings.root_dir) / "users" / user_id / "receipts"
         receipt_file = user_receipts_dir / receipt_filename
         
         if not self.storage.exists(receipt_file):

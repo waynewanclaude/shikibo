@@ -1,224 +1,128 @@
-# Implementation Notes
+# Advisory Implementation Notes & Design Rationale
 
-This document contains advisory implementation notes for `ocrone`. It may guide code development, but it is not a guard rail and must not override the governing planning documents.
-
-Use this document as a suggestion layer during implementation. Binding product behavior belongs in `user_intent.md`; development rules belong in `development_governance.md`; documentation rules belong in `documentation_principle.md`; coding principles belong in `design_and_coding_principle.md`.
+This document outlines the software design decisions, technical architecture, and module choices for the **Distributed ThreadMail System** (`shikibo`).
 
 ---
 
-## Repository Structure
+## 1. Repository Structure
+
+The physical layout of the repository matches the logical boundaries of the system:
 
 ```
-ocrone/
-|-- requirements.txt            # Package dependencies
-|-- build_exe.ps1               # Reproducible PyInstaller build script
+shikibo/
 |-- planning_and_spec/
-|   |-- design_and_coding_principle.md  # Architectural and coding principles
-|   |-- development_governance.md       # Workflow and build governance
-|   |-- documentation_principle.md      # Rules for editing specs
-|   |-- implementation_note.md          # Advisory implementation notes
-|   |-- role_and_responsibility.md     # AI agent SDLC roles and self-calibration
+|   |-- design_and_coding_principle.md  # Architectural guidelines
+|   |-- development_governance.md       # Workflow constraints
+|   |-- glossary.md                     # Terminology and end-user guide
+|   |-- implementation_note.md          # [THIS FILE] Tech choices & rationale
+|   |-- prime_directive.md              # Safety guidelines for files
 |   `-- user_intent.md                  # Binding application behavior
-|-- main.py                     # Entry point and CLI orchestrator
+|-- main.py                             # Entry point and CLI orchestrator
+|-- tests/
+|   `-- test_flow.py                    # Integration test suite
 `-- src/
     |-- __init__.py
-    |-- engine.py               # Orchestrator flow
-    |-- config.py               # Configuration management
-    |-- ocr/
+    |-- config.py                       # Configuration & path parsing (Pydantic)
+    |-- storage.py                      # Abstraction layer for filesystem operations
+    |-- client/
     |   |-- __init__.py
-    |   |-- base.py             # Abstract OCR interfaces and shared dataclasses
-    |   `-- easyocr_engine.py   # EasyOCR adapter and word-line grouping
-    |-- layout/
+    |   `-- client.py                   # ThreadMail client (drafts, outbox publishing)
+    |-- coordinator/
     |   |-- __init__.py
-    |   |-- doclayout_detector.py # DocLayout-YOLO layout-region adapter
-    |   `-- preprocessor.py     # OCR-oriented contrast normalization and deskew
-    |-- pdf/
-    |   |-- __init__.py
-    |   `-- builder.py          # ReportLab searchable PDF builder
-    `-- utils/
+    |   `-- service.py                  # Background synchronization & distribution daemon
+    `-- webapp/
         |-- __init__.py
-        |-- file_handler.py     # Natural sort and sequence gap validator
-        |-- logger.py           # Logging engine
-        `-- reporter.py         # Structured JSON execution log generator
+        |-- app.py                      # Flask backend API
+        `-- static/
+            |-- app.js                  # Frontend client application logic
+            |-- index.html              # Composer, timeline, and sidebar structure
+            `-- style.css               # Vanilla CSS layout & typography styles
 ```
 
 ---
 
-## 1. System Requirements & Installation
+## 2. Core Technical Stack & Module Choices
 
-1. **Python**: Python 3.10 or 3.11 recommended.
-2. **PyTorch Runtime**: EasyOCR and DocLayout-YOLO both depend on PyTorch. CPU execution is valid but slower. The fast binary must be built from a CUDA-enabled PyTorch environment.
-3. **Dependencies**: Install via pip from the project virtual environment:
-
-   ```bash
-   python -m pip install -r requirements.txt
-   ```
-
-### End-User Environment Build
-
-To run from source, create a virtual environment and install from `requirements.txt`:
-
-```powershell
-py -3.11 -m venv ocrone-env
-.\ocrone-env\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python main.py -i <input_images_directory>
-```
-
-OCR and layout model files may be downloaded by their upstream libraries on first use. Development runs should keep virtual environments and caches local to the project workspace or another developer-owned location, not checked into Git.
-When a project-local `.venv` exists, source runs should place OCR/model caches under `.venv/cache/`. `OCRONE_CACHE_DIR` may override the cache root.
-
-For users who do not need source execution, distribute the packaged executable instead:
-
-```powershell
-.\dist\ocrone.exe -i <input_images_directory>
-```
-
-The build step also places a sample configuration file at `dist/ocrone_sample_config.properties`. It lists every supported configuration property at its default value and can be copied or edited before passing it with `--config`.
-
-### Optional Docker Environment
-
-Docker may be used to create a reproducible source runtime. A minimal Dockerfile should install the dependency set from `requirements.txt`:
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-ENTRYPOINT ["python", "main.py"]
-```
-
-Build and run:
-
-```powershell
-docker build -t ocrone .
-docker run --rm -v ${PWD}:/work ocrone -i /work/<input_images_directory>
-```
-
-Developer environment ownership rules are defined in `planning_and_spec/development_governance.md`.
+*   **Pydantic (`src/config.py`)**: Used for managing global configuration (`Settings`). Pydantic ensures clean validation of environment variables and JSON config overrides, and provides automated initialization hooks (`model_post_init`) to dynamically construct absolute folder paths based on overrides.
+*   **Flask (`src/webapp/app.py`)**: Powering the local WebApp interface. Flask was selected because it is lightweight, standard, requires minimal boilerplate, and is easy to orchestrate locally alongside background coordinator timers.
+*   **SQLite3 (`src/coordinator/service.py`)**: Embedded local cache (`coordinator_ledger.db`) for tracking distributed message deduplication keys. It enables the coordinator to perform fast, indexed database queries to check for duplicate messages rather than scanning all threads on every tick, while remaining completely reconstructible from the raw filesystem.
+*   **Standard Python Filesystem Operations (`src/storage.py`)**: File system actions are encapsulated behind `FileSystemStorage` using standard library modules like `os`, `shutil`, `tempfile`, and `pathlib`. It avoids external database or cloud provider SDKs, enabling `shikibo` to run seamlessly on top of any file sync provider (Google Drive, Dropbox, OneDrive, Syncthing, or local directories).
 
 ---
 
-## 2. Configuration (`src/config.py`)
+## 3. Design Rationale & Choices Made
 
-Centralized parameters for processing:
+### A. The Draft Staging System
+Drafts are private, mutable workspaces stored locally (`drafts/<user_id>/`). When a message is in progress:
+*   **Persistence**: If the WebApp or user environment crashes, their composition text and attachment listings are saved to disk (`body.md` + `draft.json`) and reloaded automatically.
+*   **Attachment Isolation**: Attaching a file immediately copies it to the draft's folder. If the user moves, edits, or deletes the original source file on their machine before clicking "Publish", the publish operation does not fail because the staged copy remains intact.
+*   **Atomic Compilation**: The draft folder serves as a safe workspace to build and validate the schema before copying it as a complete package into the synchronized cloud outbox.
 
-- `DEFAULT_DPI`: DPI used for PDF point calculations.
-- `DEFAULT_LANGUAGES`: EasyOCR language code defaults.
-- `ocr_device`: Device selection for EasyOCR and DocLayout-YOLO. `auto` should choose CUDA when PyTorch reports CUDA availability and print the resolved device at startup.
-- `ocr_canvas_size`: EasyOCR detector long-side canvas limit for each submitted OCR fragment. Default should be `1024`.
-- `ocr_mag_ratio`: EasyOCR detector magnification ratio. Default should be `1.0`.
-- `ocr_batch_size`: EasyOCR recognizer batch size. Default should be `1` because EasyOCR's batched recognition path can become slower on layout-region crops when batches are padded to the widest detected text crop.
-- `deskew_enabled`: Enables OCR-oriented deskewing before recognition.
-- `layout_enabled`: Enables DocLayout-YOLO layout region analysis.
-- `CONFIDENCE_THRESHOLD`: OCR confidence limit below which warnings are triggered.
-- `ocrone_sample_config.properties`: Generated into `dist/` during the build step. Contains every supported configuration property set to its default value.
+### B. Two-Layer User & Role Folder Structure
+To support structured collaboration, top-level users can have dynamically created sub-user roles (e.g. `test_user/developer`).
+*   **Why Users Have Sub-Folders**:
+    1.  **Organizational Division**: Allows a single participant to maintain different roles (e.g., project lead, reviewer, developer) with isolated drafts, outboxes, and receipts.
+    2.  **Distributed Administration**: The coordinator only needs to register the top-level user (in `config/registered_users.txt`). Top-level users can create any roles they wish locally without requiring the coordinator to update its registered user configs.
+    3.  **Security**: The coordinator validates that the user identity (e.g. `user_id/role`) matches the directory structure `users/user_id/role/outbox/` to enforce that users cannot publish messages under other users' folders or unregistered accounts.
+*   **Directory Structure**:
+    *   Top-Level: `users/<user_id>/outbox/` and `users/<user_id>/receipts/`
+    *   Role-Level: `users/<user_id>/<role>/outbox/` and `users/<user_id>/<role>/receipts/`
+*   **Flat Directory Message Mapping**:
+    To prevent nested folders in thread messages which complicate list/sorting routines, slash characters in identity names are mapped to dots inside message directory names under threads:
+    `20260628T110729Z_000002_human_wayne.developer_U000001`
+    During ledger recovery, the coordinator parses the dot back into a slash (`human_wayne/developer`) to reconstruct correct ledger database rows.
 
----
+### C. Cloud-Friendliness & No-Loss Integrity
+*   **No Polling/No Locks**: The system avoids using file locks (which cause high sync-churn on cloud platforms like Google Drive).
+*   **Safe Sorther Execution**: The coordinator implements an atomic copy-and-verify workflow:
+    1.  Verify outbox package is stable.
+    2.  Copy package to thread folder.
+    3.  Confirm verification.
+    4.  Write receipt back to the user's receipt directory.
+    5.  Record entry to SQLite ledger.
+    6.  Move package to `.processed/` under the outbox.
+*   **Idempotency**: All operations are deduplicated by `(source_user_id, source_local_message_id)`. If the coordinator crashes mid-process, it catches up idempotently on the next run without introducing duplicate posts.
 
-## 3. Core Software Components Specification
+### D. Multi-Project Directory Segmentation
+To support multiple isolated development streams (e.g. `shikibo`, `ocrone`, `book_image_salon`), each project is assigned its own top-level directory root:
+*   Each project acts as an entirely independent database, config, and sync workspace.
+*   This isolates scanning overhead to active projects, preventing bloating and eliminating the risk of a failure in one project affecting other tasks.
+*   To switch between project contexts, client services and coordinators are simply initialized pointing to the project's subfolder (e.g. by passing the subfolder path as `-r` / `--root-dir`).
 
-### A. Image Preprocessor (`src/layout/preprocessor.py`)
+### E. Context Extraction via Zip Attachment Service
+When building new features, developers can attach zip archives of previous projects/development threads (e.g., `T_T123_ARCHIVE.zip`) as references at the beginning of a new project's coordination thread.
+*   To read these archives uniformly, clients and agents unzip the attachments into a local, read-only temporary directory.
+*   This allows both humans and AI models to inspect historical code structure, specs, and design context directly in their local filesystems, without bloating the active syncing folder layout.
 
-- Applies contrast normalization to improve text visibility before OCR.
-- Applies bounded deskewing when enabled.
-- Rotation should use high-quality interpolation and a white border so deskewing does not smear content or crop page edges.
-- Preprocessing is intended to improve OCR accuracy, not to create the final visual style of the page.
+### F. Directed Mentions & Agent Coordination Loops
+To facilitate multi-agent task dispatching and collaboration:
+*   **Mentions Extraction**: When publishing a message, the client library automatically scans the markdown body using the regex `@([\w/-]+)` to capture any user or role identities (e.g. `@human_wayne` or `@agent_developer/reviewer`) and includes them in the `mentions` list inside `message.json` metadata.
+*   **Autonomous Sensing Loop (ReAct/MCP Pattern)**:
+    1.  **Sense**: The agent processes active threads via the `list_active_threads` and `read_thread_messages` client APIs. It filters for open threads where its identity is mentioned in the latest message.
+    2.  **Plan**: The agent checks the thread message history, unzips any attached historical contexts into local read-only folders, and loads the files into its context window.
+    3.  **Act**: The agent performs coding, testing, or review tasks, saves its work locally, creates a draft, optionally includes files/zips, and publishes a reply pointing to the next recipient (e.g., mentioning `@human_user` to review or `@agent_reviewer` to double-check).
+*   **MCP Integration**: Wrapping the `ThreadMailClient` behind an MCP (Model Context Protocol) server exposes these operations directly as LLM tools, allowing cognitive loops to participate seamlessly as standard thread actors.
 
-### B. Layout Detector (`src/layout/doclayout_detector.py`)
-
-- Wraps DocLayout-YOLO behind a project-owned adapter.
-- DocLayout-YOLO should be used for document layout regions, reading-order hints, and text/non-text classification.
-- Load the DocStructBench checkpoint explicitly through `huggingface_hub.hf_hub_download()` and pass the downloaded `.pt` file path to `YOLOv10(...)`. Prefer the local Hugging Face cache first so normal runs do not make avoidable network checks after the model has already been downloaded.
-- Use the resolved OCR device for prediction. In `auto` mode, CUDA should be used when PyTorch can see it; if `cuda` is explicitly requested and unavailable, fail clearly instead of silently using CPU.
-- Do not treat DocLayout-YOLO as the source of word bounding boxes. EasyOCR provides the word-level geometry used for the searchable PDF text layer.
-- Layout detection must run on the same preprocessed image that OCR sees so coordinates remain aligned.
-
-### C. OCR Engine Wrapper (`src/ocr/easyocr_engine.py`)
-
-- Wraps EasyOCR behind `BaseOCREngine`.
-- Pass an explicit GPU flag to EasyOCR based on the resolved OCR device; do not rely on EasyOCR's default device behavior.
-- Uses EasyOCR word boxes and recognized text as the primary OCR geometry.
-- When DocLayout-YOLO returns usable layout regions, OCR those cropped regions with a small margin and translate EasyOCR boxes back into full-page coordinates. Fall back to full-page EasyOCR only when no usable layout regions are available or region OCR yields no words.
-- Pass configured `canvas_size`, `mag_ratio`, and `batch_size` values into EasyOCR. `canvas_size` controls detector resize limits for each fragment; `batch_size` controls recognizer throughput after EasyOCR has detected text crops.
-- Groups adjacent EasyOCR word boxes into physical text lines. The grouped line text should contain explicit spaces between words, including larger gaps when visual spacing indicates a column or large word gap.
-- Associates OCR lines with DocLayout-YOLO regions when useful, while keeping a sane text default if no matching layout region is available.
-
-### D. PDF Builder (`src/pdf/builder.py`)
-
-- Uses `reportlab.pdfgen.canvas` to write output pages.
-- Each page draws the original color page image at standard margins, applying the same deskew transform as the OCR image when deskewing is active. Do not apply contrast, background whitening, grayscale conversion, or other visual cleanup to the final PDF page image unless the user explicitly adds a new requirement.
-- Embed page images as JPEG by default to produce smaller PDFs. Keep PNG/lossless embedding available through configuration for users who prefer exact image preservation over file size.
-- Shows a `tqdm` progress bar while composing original color page images and the invisible text layer into the final PDF.
-- The searchable text layer must be sandwiched over the page image using physical line-level invisible text objects with normal spaces between words.
-- Do not place an entire paragraph or layout block as one PDF text object, because selection can collapse to the last line or copy text from the wrong visible position.
-- Do not place adjacent words as separate PDF text objects without separators, because PDF viewers can copy merged words such as `youprioritize`.
-- Prefer EasyOCR-derived line boxes for text-layer geometry. OpenCV may be used only as a fallback line-box estimator inside an existing OCR block crop.
-- Apply configurable text-layer box alignment after OCR geometry is selected: `text_layer_vertical_offset` shifts the invisible line box by a fraction of the original line height, and `text_layer_height_scale` scales the invisible line box height. Defaults should move text boxes upward by 30% of a line height and shrink height to 90%.
-- **Page Margin and White Space Trimming**:
-  - Automatically crops each page to its content boundaries plus customizable padding.
-  - Maintains a consistent width across all pages by using the maximum needed width across all processed pages, keeping reader zoom locked and stable.
-  - Page heights remain variable to cleanly crop out empty margins at the top and bottom of the page.
-- **Blank Page Skipping**: Automatically skips pages with zero detected text blocks by default to clean up blank scanning separators, logging them under `pages_skipped` with status `"SKIPPED_BLANK"`.
-- Coordinate mapping formula maps pixel positions (origin top-left) to PDF canvas coordinates (origin bottom-left):
-
-  $$x_{\text{pdf}} = \text{left} \times S$$
-  $$y_{\text{pdf}} = H_{\text{pdf}} - [(\text{top} + \text{height}) \times S]$$
-
-  where scale factor `S = 72 / DPI` and `H_pdf` is the scaled page height.
-
-- Draws text invisibly using rendering mode `3` to allow copy-pasting without visibly painting OCR text over the scan.
-
-### E. Sequence Validator (`src/utils/file_handler.py`)
-
-- Checks for file gaps using regular expressions.
-- In interactive mode, warnings must explain the practical problem before asking whether to continue.
-- Aborts execution if the sequence is broken and the user does not grant override permission, or if `--non-interactive` is passed without `--ignore-missing-pages`.
-
-### F. Structured JSON Reporter (`src/utils/reporter.py`)
-
-- Generates a file called `<output_pdf_name>_worklog.json` listing:
-  - Total elapsed time.
-  - Mean OCR confidence score per page.
-  - Detected skew angle per page.
-  - Warnings and errors.
-
----
-
-## 4. Usage Instructions
-
-Run the application from the project root:
-
-```bash
-python main.py -i <input_images_directory> [options]
-```
-
-### Command Options
-
-- `-c`, `--config`: Path to configuration properties file serving as the base configuration.
-- `-i`, `--input-dir`: Directory containing images or a PDF file.
-- `-o`, `--output-file`: Final searchable PDF output path. Defaults to the input path name with a `.pdf` suffix.
-- `-l`, `--lang`: EasyOCR language code. Can be declared multiple times, such as `-l en -l es`.
-- `--dpi`: Target PDF layout DPI.
-- `--ocr-device`: OCR/layout device selection, one of `auto`, `cuda`, or `cpu`.
-- `--ocr-canvas-size`: EasyOCR detector long-side canvas limit for each submitted OCR fragment.
-- `--ocr-mag-ratio`: EasyOCR detector magnification ratio.
-- `--ocr-batch-size`: EasyOCR recognizer batch size.
-- `--no-deskew`: Disable deskew correction.
-- `--no-layout`: Disable DocLayout-YOLO layout analysis and rely on EasyOCR word boxes alone.
-- `--non-interactive`: Prevent console keyboard inputs. Auto-aborts on page sequence gaps unless `--ignore-missing-pages` is used.
-- `--ignore-missing-pages`: Ignore missing sequence index errors and process what is available.
-- `--export-debug-dir`: Path to export processed input images with text bounding boxes for quality checking.
-- `--include-non-text`: Include OCR text within non-text objects like tables, figures, and graphics in the searchable PDF text overlay.
-- `--no-trim`: Disable automatic page margin and white space trimming.
-- `--trim-margin-chars`: Number of character widths of padding to leave around content when trimming.
-- `--pdf-image-format`: Embedded page image compression format, either `jpeg` or `png`.
-- `--pdf-jpeg-quality`: JPEG quality for embedded page images when `pdf_image_format=jpeg`.
-- `--text-layer-vertical-offset`: Move invisible text boxes by a line-height ratio; negative values move upward.
-- `--text-layer-height-scale`: Scale invisible text box height for PDF selection/highlight alignment.
-- `--keep-blank-pages`: Keep blank pages in the output PDF instead of skipping them.
+### G. Multi-Agent Coordination Rules & Lifecycle
+To establish a clear operational framework and avoid conflicts in the multi-agent system:
+*   **Conflict Prevention (Bid-Approval Model)**: To prevent race conditions where multiple agents work on the same task simultaneously, the system uses a centralized bidding process:
+    1.  The `agent_project_lead` identifies a task and tags candidate worker agents.
+    2.  Interested agents publish an "Intent to Work" bid (e.g., `@agent_project_lead ready to claim`) and wait.
+    3.  The `agent_project_lead` selects the appropriate agent (based on role specialization or availability), publishes a confirmation message approving the claim with a 1-sentence reasoning explanation (e.g., `Claim approved for @agent_backend_dev because the task primarily involves REST routing changes.`), and assigns it.
+    4.  Only the approved agent starts working; other candidate agents stand down.
+*   **Role Specialization (Personas)**: Rather than running redundant worker processes, agents are divided into specialized personas to keep system prompts lean and tasks accurate:
+    *   *Developers*: `agent_backend_dev`, `agent_db_dev`, `agent_frontend_dev`, and `agent_ops_dev`.
+    *   *Reviewers*: `agent_security_reviewer`, `agent_performance_reviewer`, and `agent_style_reviewer`.
+*   **Thread Closure Authority**: We employ a "Suggester" model. Worker agents suggest archiving when work is complete (e.g. `@agent_project_lead task complete, suggest archive`). Only the human user (via WebApp) or the `agent_project_lead` has the authority to change the thread status to `DONE` and trigger the coordinator to compile the archive.
+*   **Human-in-the-Loop Approvals**: Verification is text-based. When human users review a completed task, they reply to the thread with approval keywords (e.g., "Approve", "LGTM", "Verified"). The `agent_project_lead` monitors for these messages sent by the human user's ID, parses the approval, and marks the thread `DONE` automatically.
+*   **Team Roster & Authorization Keys**: To ensure safety and prevent token waste, the team organization is managed statically via a filesystem config file (`config/roster.json`) rather than relying on LLM reasoning:
+    *   **Structure**: The roster lists all active agents, their roles, and explicitly designates the identity holding the `TEAM_LEAD` role (which carries the authority to approve task claims and close threads).
+    *   **Read-Only Access**: All agents read `config/roster.json` at startup to identify team roles, capabilities, and the authorized `TEAM_LEAD` identity.
+    *   **Write-Protection**: Only the human user can modify the root `config/roster.json` file directly via the filesystem.
+    *   **Sub-Agent Lifecycle**: The agent playing the `TEAM_LEAD` role can maintain its own "personnel" registry in its private local workspace and spin up/down worker sub-agents dynamically, but it is strictly prohibited from modifying the root `roster.json` or elevating any sub-agent to the `TEAM_LEAD` role.
+    *   **Implicit Activation**: Spun up worker sub-agents do not publish thread log announcements or register in any central shared registry file when activated. Their presence is completely implicit; they simply begin reading the thread messages and posting bids when tasks require their attention, preventing thread log clutter.
+*   **Multi-Agent Security & OS Delegation**: To avoid complex custom application security and leverage mature, robust boundaries, `shikibo` delegates security enforcement directly to the underlying Operating System's native permission model (POSIX permissions or NTFS ACLs):
+    *   **No Custom Sandboxing Code**: The codebase does not implement virtual permission layers or virtual sandboxes. If running under a single shared system account or cloud sync folder, all agents share full read/write access.
+    *   **Optional System-Level Isolation**: For users who require added security, the administrator manually configures native filesystem permissions:
+        *   The coordinator process runs under a system account that owns and has write permissions over the thread directories (`threads/`), the index (`index/`), the archives (`archive/`), and global configs (`config/`).
+        *   Each worker agent process runs under a separate system user account, granted write permissions *only* to its designated outbox (`users/<user_id>/<role>/outbox/`) and local draft (`drafts/<user_id>/<role>/`) directories. All other shared directories are configured as read-only.

@@ -5,7 +5,7 @@ This document defines the strict safety directives that all code, scripts, test 
 ## Core Mandates
 
 ### 1. Preservation of User-Created Directories
-No ad hoc script, test suite, or core application code is allowed to destroy, delete, rename, or modify user-created root directories (e.g., the root transport directory `G:\My Drive\itracker_test` or the repository root).
+No ad hoc script, test suite, or core application code is allowed to destroy, delete, rename, or modify user-created root directories (e.g., the root transport directory `G:\My Drive\shikibo_test` or the repository root).
 
 ### 2. Strict Targeted Cleanup
 If a testing script or verification suite needs to clear previous state before a run, it must do so by targeting only specific, temporary, test-generated sub-directories and files. It must never perform blanket recursive deletions on parent user folders.

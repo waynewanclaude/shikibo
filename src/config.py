@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 
 class Settings(BaseModel):
     user_id: str = Field(default_factory=getpass.getuser)
+    role: str = Field(default="")
     display_name: str = Field(default="")
-    root_dir: str = Field(default=r"G:\My Drive\itracker_test")
+    root_dir: str = Field(default=r"G:\My Drive\shikibo_test")
     
     # Path configuration
     local_draft_root: str = Field(default="")
@@ -17,7 +18,7 @@ class Settings(BaseModel):
     archive_root: str = Field(default="")
     
     # Coordinator configuration
-    scan_interval: int = Field(default=10)  # seconds between background scans
+    scan_interval: int = Field(default=5)  # seconds between background scans
 
     def model_post_init(self, __context) -> None:
         if not self.display_name:
@@ -26,12 +27,20 @@ class Settings(BaseModel):
         root = Path(self.root_dir).resolve()
         
         # Build default paths if not explicitly overridden
-        if not self.local_draft_root:
-            self.local_draft_root = str(root / "drafts" / self.user_id)
-        if not self.outbox_root:
-            self.outbox_root = str(root / "users" / self.user_id / "outbox")
-        if not self.receipt_root:
-            self.receipt_root = str(root / "users" / self.user_id / "receipts")
+        if self.role:
+            if not self.local_draft_root:
+                self.local_draft_root = str(root / "drafts" / self.user_id / self.role)
+            if not self.outbox_root:
+                self.outbox_root = str(root / "users" / self.user_id / self.role / "outbox")
+            if not self.receipt_root:
+                self.receipt_root = str(root / "users" / self.user_id / self.role / "receipts")
+        else:
+            if not self.local_draft_root:
+                self.local_draft_root = str(root / "drafts" / self.user_id)
+            if not self.outbox_root:
+                self.outbox_root = str(root / "users" / self.user_id / "outbox")
+            if not self.receipt_root:
+                self.receipt_root = str(root / "users" / self.user_id / "receipts")
         if not self.thread_root:
             self.thread_root = str(root / "threads")
         if not self.index_root:
@@ -52,12 +61,12 @@ def load_settings(config_path: str = None) -> Settings:
             
     # Allow environment variable overrides
     env_keys = [
-        "user_id", "display_name", "root_dir", 
+        "user_id", "role", "display_name", "root_dir", 
         "local_draft_root", "outbox_root", "receipt_root", 
         "thread_root", "index_root", "archive_root", "scan_interval"
     ]
     for key in env_keys:
-        env_val = os.environ.get(f"ITRACKER_{key.upper()}")
+        env_val = os.environ.get(f"SHIKIBO_{key.upper()}")
         if env_val is not None:
             data[key] = env_val
             

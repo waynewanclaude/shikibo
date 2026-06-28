@@ -103,12 +103,12 @@ Messages may include:
 *   CSV / JSON files
 *   Arbitrary attachments
 
-Large binary content should not be embedded directly in JSON metadata. A message package should contain:
-*   `message.json` (metadata)
-*   `body.md` (text content)
-*   `attachments/` (binary files)
+Large binary content should not be embedded directly in JSON metadata. A message package contains:
+*   `message.json`: Metadata schema containing protocol fields (schema version, source user/role ID, local ID, target thread ID, content hash, file attachment records, and a `mentions` list of user/role identities automatically extracted from `@mentions` in the markdown body).
+*   `body.md`: Markdown text content.
+*   `attachments/`: Directory of copy-staged binary files.
 
-The metadata should include MIME/media type information so the WebApp can render or play attachments with suitable controls.
+The metadata includes MIME/media type information so the WebApp can render or play attachments with suitable controls.
 
 ### 1.9 Global Coordinator Concept
 The global coordinator is a background distributor. In version 1, there is only one coordinator.
@@ -162,7 +162,7 @@ Preferred behavior:
 *   Archival of closed threads
 
 ### 1.13 Version-1 Scope
-*   **Included**: One global coordinator, manual registered-outbox config (`registered_outboxes.txt`), local WebApp, local client service, Python client library, filesystem-based storage, local drafts, immutable outbox packages, thread folders, receipts, archive support.
+*   **Included**: One global coordinator, manual registered-users config (`registered_users.txt`), local WebApp, local client service, Python client library, filesystem-based storage, local drafts, immutable outbox packages, thread folders, receipts, archive support.
 *   **Excluded**: Redundant coordinators, leader election, shared-secret coordinator negotiation, provider-specific Drive/iCloud APIs, realtime messaging, public server, hosted database, mobile app.
 
 ---
@@ -238,7 +238,7 @@ The global coordinator is the only component that distributes User outbox messag
 
 ### 3.2 Coordinator Input & Output
 *   **Inputs**:
-    *   `config/registered_outboxes.txt` (simple text file containing one registered outbox path per line)
+    *   `config/registered_users.txt` (simple text file containing one registered top-level username per line)
     *   `users/<user_id>/outbox/`
     *   `threads/`
     *   `index/`
@@ -304,3 +304,18 @@ The client library should depend on a storage abstraction (`list`, `read`, `writ
 *   Outbox packages are immutable.
 *   Published packages are never overwritten.
 *   Distributed thread messages are coordinator-owned.
+
+### 4.4 Rationale for the Draft System
+Although drafts are stored locally in the participant's private workspace, the formal draft system provides crucial benefits:
+*   **Persistence & Crash Recovery**: Avoids losing progress if the WebApp or user's environment restarts, switches thread focus, or crashes. Draft metadata and text are saved incrementally on disk.
+*   **Safe Attachment Staging**: When files are attached, they are immediately copied to the draft folder. This ensures that even if the user edits, moves, or deletes the original source file on their computer before publishing, the message compiles and publishes successfully.
+*   **Consistent Client Interface**: Aligns programmatic inputs from humans (via UI) and AI agents (via code) into a unified workspace flow (`create_draft` -> `update_draft_body` -> `publish_draft`).
+*   **Atomic Outbox Staging**: Provides a structured container (`draft.json`, `body.md`, and `attachments/` folder) that can be easily validated, finalized, and atomically renamed/moved into the shared cloud outbox.
+
+### 4.5 Team Scaling & Deployment Philosophy
+To keep the application code simple, lightweight, and robust, `shikibo` leverages a scale-free architecture:
+*   **Small Teams**: Can be run entirely on a shared local directory (fast, private, and local-only).
+*   **Medium Teams**: Can be run on a shared network drive (local intranet).
+*   **Large/Distributed Teams**: Can be run on a shared cloud storage folder (Google Drive, Dropbox, OneDrive, iCloud, Syncthing) for global, serverless synchronization.
+*   **OS-Native Security Delegation**: The platform does not implement complex application-level security sandboxing. Instead, the `user/role` subfolder layout (`users/<user_id>/<role>/`) allows the platform to delegate permission and write restrictions directly to the underlying Operating System's native file security (POSIX permissions or NTFS ACLs).
+
