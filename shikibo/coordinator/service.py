@@ -278,6 +278,15 @@ class CoordinatorService:
             self.write_receipt_if_missing(user_id, local_id, thread_id)
             return {"status": "duplicate", "user_id": user_id, "local_id": local_id}
 
+        # Force directory listing refresh to clear virtual drive caching (e.g. Google Drive) on Windows
+        try:
+            self.storage.list_dir(Path(self.settings.thread_root))
+            thread_dir = Path(self.settings.thread_root) / thread_id
+            if self.storage.exists(thread_dir):
+                self.storage.list_dir(thread_dir)
+        except Exception:
+            pass
+
         # Check if thread is valid and open
         thread_dir = Path(self.settings.thread_root) / thread_id
         thread_meta_path = thread_dir / "thread.json"
