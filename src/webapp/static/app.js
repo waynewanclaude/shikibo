@@ -16,6 +16,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-new-thread").addEventListener("click", openNewThreadModal);
     document.getElementById("btn-close-modal").addEventListener("click", closeNewThreadModal);
     document.getElementById("btn-submit-thread").addEventListener("click", submitNewThread);
+    document.getElementById("btn-new-user").addEventListener("click", openNewUserModal);
+    document.getElementById("btn-close-user-modal").addEventListener("click", closeNewUserModal);
+    document.getElementById("btn-submit-user").addEventListener("click", submitNewUser);
     document.getElementById("btn-scan").addEventListener("click", runCoordinatorScan);
     document.getElementById("btn-add-attachment").addEventListener("click", () => {
         document.getElementById("composer-file-input").click();
@@ -38,6 +41,7 @@ async function loadConfig() {
 
 async function refreshAll() {
     await loadThreads();
+    await loadUsers();
     await loadPending();
     await loadReceipts();
 }
@@ -46,6 +50,7 @@ async function pollUpdates() {
     if (activeThreadId) {
         await loadThreadMessages(activeThreadId);
     }
+    await loadUsers();
     await loadPending();
     await loadReceipts();
 }
@@ -508,4 +513,63 @@ function showScanStatus(msg) {
 // Safe stringify helper
 function jsonStringify(obj) {
     return JSON.stringify(obj);
+}
+
+// --- User Management UI ---
+
+function openNewUserModal() {
+    document.getElementById("new-user-modal").style.display = "flex";
+}
+
+function closeNewUserModal() {
+    document.getElementById("new-user-modal").style.display = "none";
+}
+
+async function submitNewUser() {
+    const userId = document.getElementById("user-id-input").value.trim();
+    if (!userId) {
+        alert("Please enter a User ID.");
+        return;
+    }
+    try {
+        const res = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: jsonStringify({ user_id: userId })
+        });
+        if (res.ok) {
+            closeNewUserModal();
+            document.getElementById("user-id-input").value = "";
+            await loadUsers();
+        } else {
+            const err = await res.json();
+            alert(`Failed to add user: ${err.error}`);
+        }
+    } catch (e) {
+        console.error("Failed to add user", e);
+    }
+}
+
+async function loadUsers() {
+    try {
+        const res = await fetch("/api/users");
+        const users = await res.json();
+        const container = document.getElementById("user-list");
+        container.innerHTML = "";
+        
+        if (users.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="font-size:0.8rem; padding:10px;">No registered users</div>';
+            return;
+        }
+        
+        users.forEach(u => {
+            const item = document.createElement("div");
+            item.className = "thread-item done"; // Reuses thread item style (grayed out style)
+            item.style.cursor = "default";
+            item.textContent = u;
+            container.appendChild(item);
+        });
+    } catch (e) {
+        console.error("Failed to load users", e);
+    }
 }
