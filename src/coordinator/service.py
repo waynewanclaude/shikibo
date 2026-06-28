@@ -239,8 +239,11 @@ class CoordinatorService:
         }
         
         try:
+            receipt_path = user_receipts_dir / receipt_filename
+            if self.storage.exists(receipt_path):
+                self.storage.delete(receipt_path)
             self.storage.write_file_new(
-                user_receipts_dir / receipt_filename,
+                receipt_path,
                 json.dumps(receipt_data, indent=2)
             )
         except Exception as e:
