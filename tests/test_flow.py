@@ -20,16 +20,24 @@ def test_integration():
     test_root = r"G:\My Drive\itracker_test"
     print(f"Using test root: {test_root}")
     
-    # We will clean up the test root if it exists to start fresh
+    # Clean up only specific test files/folders we create, leaving the root directory intact
     storage = FileSystemStorage()
-    if storage.exists(test_root):
-        print("Cleaning up existing test folder...")
-        try:
-            storage.delete(test_root)
-        except Exception as e:
-            print(f"Warning: failed to clear directory: {e}")
-            
     storage.makedirs(test_root)
+    
+    # Specific test paths to clean up
+    cleanup_paths = [
+        os.path.join(test_root, "threads", "T_20260627_TEST"),
+        os.path.join(test_root, "users", "test_runner"),
+        os.path.join(test_root, "drafts", "test_runner"),
+        os.path.join(test_root, "config", "registered_users.txt"),
+        os.path.join(test_root, "coordinator", "coordinator_ledger.db")
+    ]
+    for path in cleanup_paths:
+        if storage.exists(path):
+            try:
+                storage.delete(path)
+            except Exception as e:
+                print(f"Warning: failed to clean up {path}: {e}")
     
     settings = Settings(
         user_id="test_runner",
