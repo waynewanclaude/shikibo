@@ -74,9 +74,10 @@ To support structured collaboration, top-level users can have dynamically create
     During ledger recovery, the coordinator parses the dot back into a slash (`human_wayne/developer`) to reconstruct correct ledger database rows.
 
 ### C. Cloud-Friendliness & No-Loss Integrity
-*   **Instance Lock Mechanics**: While the system avoids file locking for regular thread access to minimize sync-churn on cloud sync providers, it enforces process-level exclusivity for the coordinator service via a two-tier startup validation:
+*   **Instance Lock Mechanics**: While the system avoids file locking for regular thread access to minimize sync-churn on cloud sync providers, it enforces process-level exclusivity for the coordinator service **only when started as a timed background daemon service (`python -m shikibo service`)** via a two-tier startup validation:
     1.  **Host and User Authorization**: The coordinator reads `<root_dir>/system/config/coordinator_host.json` to verify that the executing host and system user match the authorized configuration. This prevents unauthorized systems or synced client instances from starting background scanning loops.
     2.  **Process PID Verification**: The coordinator reads `<root_dir>/system/coordinator/coordinator_pid.txt`. If the PID belongs to an active `shikibo` coordinator process, the new instance exits with a message. Otherwise, it updates the lock file with its own PID to claim the coordinator throne.
+    *Note: Other commands like `webapp`, `scan` (one-shot manual scans), and `archive` bypass these checks completely to allow flexible multi-machine client operations.*
 *   **Safe Sorther Execution**: The coordinator implements an atomic copy-and-verify workflow:
     1.  Verify outbox package is stable.
     2.  Copy package to thread folder.

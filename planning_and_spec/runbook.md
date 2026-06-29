@@ -51,7 +51,7 @@ To shut down a running coordinator, send a keyboard interrupt (`Ctrl+C`) or term
 
 ## 3. Instance Prevention Mechanics
 
-When a coordinator process starts, it performs a two-tier safety validation check.
+When the coordinator service is started in timed background daemon service mode (`python -m shikibo service`), it performs a two-tier safety validation check. Other commands (such as launching the WebApp, running a manual one-shot scan, or archiving) bypass these checks entirely.
 
 ```mermaid
 graph TD

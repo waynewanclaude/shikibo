@@ -33,17 +33,6 @@ def test_integration():
         root_dir=test_root
     )
     
-    # Pre-create host configuration file to satisfy coordinator authorization check
-    import socket
-    import getpass
-    host_file = Path(settings.root_dir) / "system" / "config" / "coordinator_host.json"
-    storage.makedirs(host_file.parent)
-    host_data = {
-        "host": socket.gethostname(),
-        "user": getpass.getuser()
-    }
-    storage.write_file_new(host_file, json.dumps(host_data))
-
     # Initialize Client & Coordinator
     client = ThreadMailClient(settings, storage)
     coordinator = CoordinatorService(settings, storage)
@@ -238,7 +227,8 @@ def test_coordinator_locks():
     
     # 1. Test missing coordinator_host.json raises SystemExit
     try:
-        CoordinatorService(settings, storage)
+        coord = CoordinatorService(settings, storage)
+        coord.enforce_service_locks()
         assert False, "Should have failed due to missing coordinator_host.json"
     except SystemExit as e:
         print("Success: Missing host config check raised SystemExit as expected.")
@@ -250,7 +240,8 @@ def test_coordinator_locks():
     storage.write_file_new(host_file, json.dumps({"host": "wrong_host", "user": "wrong_user"}))
     
     try:
-        CoordinatorService(settings, storage)
+        coord = CoordinatorService(settings, storage)
+        coord.enforce_service_locks()
         assert False, "Should have failed due to mismatched host/user"
     except SystemExit as e:
         print("Success: Mismatched host config check raised SystemExit as expected.")
@@ -261,6 +252,7 @@ def test_coordinator_locks():
     storage.write_file_new(host_file, json.dumps({"host": socket.gethostname(), "user": getpass.getuser()}))
     
     coord1 = CoordinatorService(settings, storage)
+    coord1.enforce_service_locks()
     print("Success: Coordinator instantiated with valid host config.")
     
     pid_file = Path(settings.root_dir) / "system" / "coordinator" / "coordinator_pid.txt"
@@ -270,6 +262,7 @@ def test_coordinator_locks():
     
     # 4. Test double instantiation in the same process does not fail (reclaims throne)
     coord2 = CoordinatorService(settings, storage)
+    coord2.enforce_service_locks()
     print("Success: Re-instantiation in same process succeeded without error.")
     
     # 5. Test another active process raises SystemExit
@@ -279,7 +272,8 @@ def test_coordinator_locks():
         storage.delete(pid_file)
         storage.write_file_new(pid_file, str(parent_pid))
         
-        CoordinatorService(settings, storage)
+        coord3 = CoordinatorService(settings, storage)
+        coord3.enforce_service_locks()
         assert False, f"Should have failed due to active coordinator PID check (PID: {parent_pid})"
     except SystemExit as e:
         print("Success: Active coordinator PID collision check raised SystemExit as expected.")

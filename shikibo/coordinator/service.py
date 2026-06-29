@@ -42,10 +42,6 @@ class CoordinatorService:
     def __init__(self, settings: Settings, storage: FileSystemStorage = None):
         self.settings = settings
         self.storage = storage or FileSystemStorage()
-        
-        # Verify host/user constraints first, then verify process-level active locking
-        self._verify_host_and_user()
-        self._check_and_write_pid()
 
         self.scan_lock = threading.Lock()
         self.observer = None
@@ -70,6 +66,13 @@ class CoordinatorService:
         self._init_db()
         self.rebuild_ledger_if_empty()
         logger.info(f"CoordinatorService initialized. Root directory: {self.settings.root_dir}, Database: {self.db_path}")
+
+    def enforce_service_locks(self) -> None:
+        """Enforces host/user validation and process-level active locks.
+        Only executed when the coordinator is run as a background service/daemon.
+        """
+        self._verify_host_and_user()
+        self._check_and_write_pid()
 
     def _verify_host_and_user(self) -> None:
         """Verifies that the coordinator is running on the authorized host and system user."""

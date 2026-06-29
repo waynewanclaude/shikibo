@@ -37,6 +37,7 @@ def run_single_scan(settings, storage):
 
 def run_coordinator_service(settings, storage):
     coordinator = CoordinatorService(settings, storage)
+    coordinator.enforce_service_locks()
     if settings.use_fs_events:
         console.print("[bold green]Starting Coordinator filesystem event service...[/bold green]")
         console.print("[yellow]Press Ctrl+C to stop.[/yellow]")
