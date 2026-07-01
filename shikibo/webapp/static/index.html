@@ -29,11 +29,6 @@
                 </div>
                 <button class="btn btn-secondary btn-full" id="btn-new-thread" style="margin-bottom: 20px;">+ New Thread</button>
 
-                <h3>Users</h3>
-                <div class="user-list" id="user-list" style="display:flex; flex-direction:column; gap:5px; margin-bottom: 10px;">
-                    <!-- Loaded dynamically -->
-                </div>
-                <button class="btn btn-secondary btn-full" id="btn-new-user" style="margin-bottom: 10px;">+ Add User</button>
             </nav>
             
             <div class="sidebar-footer">
@@ -71,7 +66,6 @@
                         </div>
                         
                         <div class="action-buttons">
-                            <button class="btn btn-secondary" id="btn-save-draft">Save Draft</button>
                             <button class="btn btn-primary" id="btn-publish">Publish Message</button>
                         </div>
                     </div>
@@ -114,20 +108,7 @@
         </div>
     </div>
     
-    <!-- Modal for new user -->
-    <div class="modal" id="new-user-modal">
-        <div class="modal-content">
-            <h3>Add New User</h3>
-            <div class="form-group">
-                <label for="user-id-input">User ID (folder name)</label>
-                <input type="text" id="user-id-input" placeholder="e.g. user_alice">
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" id="btn-close-user-modal">Cancel</button>
-                <button class="btn btn-primary" id="btn-submit-user">Add User</button>
-            </div>
-        </div>
-    </div>
+
     
     <script src="app.js"></script>
 </body>

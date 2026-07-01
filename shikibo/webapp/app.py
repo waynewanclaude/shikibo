@@ -11,7 +11,7 @@ import logging
 
 from shikibo.config import load_settings
 from shikibo.storage import FileSystemStorage
-from shikibo.client.client import ThreadMailClient
+from shikibo.client.client import ThreadMailClient, BAD_VALUE
 from shikibo.coordinator.service import CoordinatorService
 
 logger = logging.getLogger("shikibo.webapp")
@@ -62,26 +62,6 @@ def get_config():
 @app.route("/api/users", methods=["GET"])
 def list_users():
     return jsonify(coordinator.get_registered_users())
-
-@app.route("/api/users", methods=["POST"])
-def add_user():
-    data = request.json or {}
-    new_user_id = data.get("user_id")
-    if not new_user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-        
-    new_user_id = secure_filename(new_user_id)
-    if not new_user_id:
-        return jsonify({"error": "Invalid user_id"}), 400
-        
-    try:
-        coordinator.register_user(new_user_id)
-        user_dir = Path(settings.root_dir) / "users" / new_user_id
-        storage.makedirs(user_dir / "outbox")
-        storage.makedirs(user_dir / "receipts")
-        return jsonify({"status": "success", "user_id": new_user_id})
-    except Exception as e:
-        return jsonify({"error": f"Failed to add user: {e}"}), 500
 
 @app.route("/api/threads", methods=["GET"])
 def list_threads():
@@ -243,6 +223,8 @@ def publish_draft(draft_id: str):
             "source_local_message_id": msg_id,
             "outbox_package_path": outbox_path
         })
+    except BAD_VALUE as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -299,7 +281,6 @@ def run_server(settings_obj, port: int = 5000, debug: bool = False):
     storage = FileSystemStorage()
     client = ThreadMailClient(settings, storage)
     coordinator = CoordinatorService(settings, storage)
-    coordinator.register_user(settings.user_id)
     
     # Initialize filesystem watcher for SSE client refresh if enabled
     if settings.use_fs_events:

@@ -37,8 +37,14 @@ def test_integration():
     client = ThreadMailClient(settings, storage)
     coordinator = CoordinatorService(settings, storage)
     
-    # Register client user
-    coordinator.register_user(settings.user_id)
+    # Register client user (simulating admin manual registration)
+    users_file = Path(settings.root_dir) / "system" / "config" / "registered_users.txt"
+    storage.makedirs(users_file.parent)
+    if storage.exists(users_file):
+        storage.delete(users_file)
+    storage.write_file_new(users_file, f"{settings.user_id}\n")
+    storage.makedirs(Path(settings.root_dir) / "users" / settings.user_id / "outbox")
+    storage.makedirs(Path(settings.root_dir) / "users" / settings.user_id / "receipts")
     print("Registered outboxes:", coordinator.get_registered_outboxes())
     
     # 2. Setup a test thread folder
@@ -57,6 +63,18 @@ def test_integration():
     storage.write_file_new(thread_dir / "README.md", "README for integration testing thread")
     print(f"Created active thread: {thread_id}")
     
+    # 2b. Test Empty Message rejection
+    print("Testing empty message rejection...")
+    from shikibo.client.client import BAD_VALUE
+    empty_draft_id = client.create_draft(thread_id=thread_id, body="   ")
+    try:
+        client.publish_draft(empty_draft_id)
+        assert False, "Should have failed to publish empty message"
+    except BAD_VALUE as e:
+        print(f"Success: Empty message publishing check raised BAD_VALUE as expected: {e}")
+    finally:
+        client.delete_local_draft(empty_draft_id)
+
     # 3. Create draft
     print("Creating client draft...")
     draft_id = client.create_draft(thread_id=thread_id, body="Hello @test_receiver, this is a test message body.")
@@ -226,6 +244,10 @@ def test_coordinator_locks():
     )
     
     # 1. Test missing coordinator_host.json raises SystemExit
+    hostname = socket.gethostname()
+    pid = os.getpid()
+    status_file = Path(settings.root_dir) / "system" / "coordinator" / f"{hostname}-{pid}.txt"
+
     try:
         coord = CoordinatorService(settings, storage)
         coord.enforce_service_locks()
@@ -233,6 +255,11 @@ def test_coordinator_locks():
     except SystemExit as e:
         print("Success: Missing host config check raised SystemExit as expected.")
         assert "configuration file is missing" in str(e)
+        assert storage.exists(status_file)
+        status_content = storage.read_file_text(status_file)
+        assert "Exit:" in status_content
+        assert "missing" in status_content
+        print("Success: Missing host status file verified.")
         
     # 2. Test mismatched coordinator_host.json raises SystemExit
     host_file = Path(settings.root_dir) / "system" / "config" / "coordinator_host.json"
@@ -246,14 +273,26 @@ def test_coordinator_locks():
     except SystemExit as e:
         print("Success: Mismatched host config check raised SystemExit as expected.")
         assert "Unauthorized host/user configuration" in str(e)
+        assert storage.exists(status_file)
+        status_content = storage.read_file_text(status_file)
+        assert "Exit:" in status_content
+        assert "Unauthorized host/user" in status_content
+        print("Success: Mismatched host status file verified.")
         
     # 3. Test matching host config works and claims the throne (writes PID)
     storage.delete(host_file)
     storage.write_file_new(host_file, json.dumps({"host": socket.gethostname(), "user": getpass.getuser()}))
     
+    # Write dummy old status file to test cleanup
+    dummy_status_file = Path(settings.root_dir) / "system" / "coordinator" / f"{hostname}-9999.txt"
+    storage.write_file_new(dummy_status_file, "dummy content")
+    assert storage.exists(dummy_status_file)
+
     coord1 = CoordinatorService(settings, storage)
     coord1.enforce_service_locks()
     print("Success: Coordinator instantiated with valid host config.")
+    assert not storage.exists(dummy_status_file)
+    print("Success: Old status files cleanup verified.")
     
     pid_file = Path(settings.root_dir) / "system" / "coordinator" / "coordinator_pid.txt"
     assert storage.exists(pid_file)
@@ -278,6 +317,11 @@ def test_coordinator_locks():
     except SystemExit as e:
         print("Success: Active coordinator PID collision check raised SystemExit as expected.")
         assert "already running" in str(e)
+        assert storage.exists(status_file)
+        status_content = storage.read_file_text(status_file)
+        assert "Exit:" in status_content
+        assert "already running" in status_content
+        print("Success: PID collision status file verified.")
         
     # Clean up test root
     try:

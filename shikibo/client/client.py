@@ -15,6 +15,10 @@ from shikibo.storage import FileSystemStorage
 
 logger = logging.getLogger("shikibo.client")
 
+class BAD_VALUE(ValueError):
+    """Raised when an operation receives an invalid or empty parameter value."""
+    pass
+
 class ThreadMailClient:
     def __init__(self, settings: Settings, storage: FileSystemStorage = None):
         self.settings = settings
@@ -224,6 +228,11 @@ class ThreadMailClient:
         """
         draft_data = self.read_draft(draft_id)
         draft_path = self._get_draft_path(draft_id)
+        
+        # Verify message body is not empty
+        body_text = draft_data.get("body", "")
+        if not body_text or not body_text.strip():
+            raise BAD_VALUE("Message body cannot be empty.")
         
         # Verify target thread exists
         thread_id = draft_data.get("thread_id")

@@ -110,3 +110,52 @@ If you must manually force a cleanup or force-restart the message pump:
    * **Linux**: `kill -9 <stale_pid>`
 3. Delete the file `<root_dir>/system/coordinator/coordinator_pid.txt` (or let the new coordinator automatically overwrite it on startup).
 4. Restart the message pump: `python -m shikibo service`.
+
+---
+
+## 5. User Management (Statically Configured)
+
+All user registration and folder setup is done statically by a human administrator. The WebApp and client services are restricted from programmatically creating or registering users.
+
+### A. Adding a New User
+To add a new participant to the system:
+1. **Directory Setup**:
+   Create the top-level user folder and their personal outbox/receipts subdirectories:
+   ```
+   <root_dir>/users/<user_id>/
+   <root_dir>/users/<user_id>/outbox/
+   <root_dir>/users/<user_id>/receipts/
+   ```
+2. **Access Permissions (OS-Level Isolation)**:
+   * Configure the parent directory `users/` to be **read-only** for all client processes.
+   * Grant **read/write** access to the registered user's system account for their own directory `users/<user_id>/`.
+3. **Register the User**:
+   Open the configuration file at `system/config/registered_users.txt` and append the `<user_id>` on a new line.
+4. **Role Creation**:
+   Users can create sub-role directories under their user folder (e.g. `users/<user_id>/developer/outbox`). All role names must strictly consist of alphanumeric characters and underscores (`^[a-zA-Z0-9_]+$`). Any folders violating this constraint will be automatically skipped by the coordinator during dynamic role discovery.
+
+### B. Removing a User
+To remove or disable a participant:
+1. Open the file `system/config/registered_users.txt` and remove the user's name from the list.
+2. *(Optional)* Revoke their write permissions or archive/delete their directory `users/<user_id>/`.
+
+---
+
+## 6. Changing Coordinator Host (Active Handover)
+
+To safely migrate the active coordinator service to a new machine on the network, follow these instructions:
+
+### Step-by-Step Migration Process
+1. **(Optional) Shutdown Current Coordinator**:
+   Directly stop the running coordinator service process on the active machine (e.g., via `Ctrl+C` or process termination tools).
+2. **Update Configuration**:
+   Edit `<root_dir>/system/config/coordinator_host.json` to define the new target `host` and system `user` authorized to run the service.
+3. **Wait for Network Propagation**:
+   Wait **5 minutes** to ensure the updated `coordinator_host.json` file is fully synchronized and reaches all active hosts on the network.
+4. **Self-Termination of Old Coordinator**:
+   If the old coordinator was *not* manually shut down in Step 1, it will automatically detect the configuration change. Upon starting its next pending messages dispatch loop, it will verify the new host settings, write the exit reason into its status file `<hostname>-<PID>.txt`, and safely self-terminate.
+5. **Start New Coordinator**:
+   Start the coordinator service on the new machine matching the updated `coordinator_host.json` config:
+   ```powershell
+   python -m shikibo service
+   ```

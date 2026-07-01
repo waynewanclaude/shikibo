@@ -42,6 +42,7 @@ class CoordinatorService:
     def __init__(self, settings: Settings, storage: FileSystemStorage = None):
         self.settings = settings
         self.storage = storage or FileSystemStorage()
+        self.is_service = False
 
         self.scan_lock = threading.Lock()
         self.observer = None
@@ -67,12 +68,43 @@ class CoordinatorService:
         self.rebuild_ledger_if_empty()
         logger.info(f"CoordinatorService initialized. Root directory: {self.settings.root_dir}, Database: {self.db_path}")
 
+    def write_status_file(self, message: str) -> None:
+        """Writes/overwrites a timestamped status file `<hostname>-<PID>.txt` in system/coordinator."""
+        from datetime import datetime
+        ts = datetime.now().astimezone().replace(microsecond=0).isoformat()
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        status_file = Path(self.settings.root_dir) / "system" / "coordinator" / f"{hostname}-{pid}.txt"
+        self.storage.makedirs(status_file.parent)
+        if self.storage.exists(status_file):
+            self.storage.delete(status_file)
+        self.storage.write_file_new(status_file, f"{ts}\n{message}\n")
+
+    def cleanup_old_status_files(self) -> None:
+        """Removes any old status files for the current host in system/coordinator."""
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        coord_dir = Path(self.settings.root_dir) / "system" / "coordinator"
+        if self.storage.exists(coord_dir) and self.storage.is_dir(coord_dir):
+            try:
+                entries = self.storage.list_dir(coord_dir)
+                for entry in entries:
+                    if entry.startswith(f"{hostname}-") and entry.endswith(".txt") and entry != f"{hostname}-{pid}.txt":
+                        self.storage.delete(coord_dir / entry)
+            except Exception as e:
+                logger.warning(f"Failed to clean up old status files: {e}")
+
     def enforce_service_locks(self) -> None:
         """Enforces host/user validation and process-level active locks.
         Only executed when the coordinator is run as a background service/daemon.
         """
-        self._verify_host_and_user()
-        self._check_and_write_pid()
+        try:
+            self._verify_host_and_user()
+            self._check_and_write_pid()
+        except SystemExit as e:
+            self.write_status_file(f"Exit: {e}")
+            raise
+        self.cleanup_old_status_files()
 
     def _verify_host_and_user(self) -> None:
         """Verifies that the coordinator is running on the authorized host and system user."""
@@ -291,6 +323,9 @@ class CoordinatorService:
                     for entry in entries:
                         if entry in ("outbox", "receipts", ".processed") or self._is_temp_name(entry):
                             continue
+                        if not re.match(r"^[a-zA-Z0-9_]+$", entry):
+                            logger.warning(f"Discarding invalid role directory name: {entry}")
+                            continue
                         role_dir = user_dir / entry
                         role_outbox = role_dir / "outbox"
                         if self.storage.is_dir(role_dir) and self.storage.exists(role_outbox):
@@ -298,16 +333,6 @@ class CoordinatorService:
                 except Exception:
                     pass
         return outboxes
-
-    def register_user(self, username: str) -> None:
-        """Helper to register a new user in registered_users.txt."""
-        users = self.get_registered_users()
-        if username not in users:
-            users.append(username)
-            # Write back
-            content = "\n".join(users) + "\n"
-            self.storage.delete(self.registered_users_file)
-            self.storage.write_file_new(self.registered_users_file, content)
 
     def is_message_distributed(self, user_id: str, local_id: str) -> bool:
         conn = sqlite3.connect(self.db_path)
@@ -517,6 +542,9 @@ class CoordinatorService:
         """Scans all registered outboxes and processes pending messages.
         Moves successfully distributed packages to an outbox .processed subfolder.
         """
+        if getattr(self, "is_service", False):
+            self._verify_host_and_user()
+
         with self.scan_lock:
             registered = self.get_registered_outboxes()
             logger.info(f"Scanning outboxes: {registered}")
@@ -577,6 +605,9 @@ class CoordinatorService:
                             
             if summary["processed"] > 0 or summary["duplicates"] > 0 or summary["dead_lettered"] > 0:
                 logger.info(f"Scan complete: {summary}")
+                
+            if getattr(self, "is_service", False) and summary["processed"] > 0:
+                self.write_status_file(f"Dispatched {summary['processed']} messages in the loop.")
                 
             return summary
 
