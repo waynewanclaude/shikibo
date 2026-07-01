@@ -4,6 +4,7 @@ let activeThreadId = null;
 let currentDraftId = null;
 let config = {};
 let lastMessageIds = [];
+let pollingPaused = false;
 
 // On startup
 document.addEventListener("DOMContentLoaded", async () => {
@@ -15,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const eventSource = new EventSource("/api/events");
         eventSource.onmessage = async (event) => {
             if (event.data === "refresh") {
+                if (pollingPaused) return;
                 await refreshAll();
                 if (activeThreadId) {
                     await loadThreadMessages(activeThreadId);
@@ -40,6 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("composer-file-input").addEventListener("change", handleFileUpload);
     document.getElementById("btn-publish").addEventListener("click", publishMessage);
     document.getElementById("btn-mark-done").addEventListener("click", markThreadDone);
+    document.getElementById("btn-pause-resume").addEventListener("click", togglePauseResume);
     
     // Enter to publish, Shift+Enter to newline
     document.getElementById("composer-body").addEventListener("keydown", (e) => {
@@ -115,10 +118,32 @@ async function refreshAll() {
 }
 
 async function pollUpdates() {
+    if (pollingPaused) return;
     if (activeThreadId) {
         await loadThreadMessages(activeThreadId);
     }
     await loadPending();
+}
+
+async function togglePauseResume() {
+    const btn = document.getElementById("btn-pause-resume");
+    pollingPaused = !pollingPaused;
+    
+    if (pollingPaused) {
+        btn.textContent = "Resume Updates";
+        btn.classList.add("btn-warning");
+        btn.classList.remove("btn-secondary");
+        showScanStatus("Updates paused");
+    } else {
+        btn.textContent = "Pause Updates";
+        btn.classList.add("btn-secondary");
+        btn.classList.remove("btn-warning");
+        showScanStatus("Updates resumed");
+        await refreshAll();
+        if (activeThreadId) {
+            await loadThreadMessages(activeThreadId);
+        }
+    }
 }
 
 // --- Thread operations ---
@@ -163,6 +188,9 @@ function selectThread(threadId, title, desc, status) {
     // Show header info
     document.getElementById("active-thread-title").textContent = title;
     document.getElementById("active-thread-desc").textContent = desc || "No description provided";
+    
+    const pauseBtn = document.getElementById("btn-pause-resume");
+    pauseBtn.style.display = "block";
     
     const markDoneBtn = document.getElementById("btn-mark-done");
     if (status === "OPEN") {

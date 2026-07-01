@@ -333,6 +333,17 @@ h3 {
     background-color: var(--danger-hover);
 }
 
+.btn-warning {
+    background-color: #ffc107;
+    color: #000000;
+    border-color: #ffc107;
+}
+
+.btn-warning:hover {
+    background-color: #ffca2c;
+    border-color: #ffc720;
+}
+
 .btn-sm {
     padding: 3px 8px;
     font-size: 0.8rem;
