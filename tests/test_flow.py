@@ -43,8 +43,8 @@ def test_integration():
     if storage.exists(users_file):
         storage.delete(users_file)
     storage.write_file_new(users_file, f"{settings.user_id}\n")
-    storage.makedirs(Path(settings.root_dir) / "users" / settings.user_id / "outbox")
-    storage.makedirs(Path(settings.root_dir) / "users" / settings.user_id / "receipts")
+    storage.makedirs(settings.outbox_root)
+    storage.makedirs(settings.receipt_root)
     print("Registered outboxes:", coordinator.get_registered_outboxes())
     
     # 2. Setup a test thread folder
@@ -330,6 +330,65 @@ def test_coordinator_locks():
         pass
     print("=== LOCK TESTS PASSED SUCCESSFULLY! ===")
 
+def test_settings_validation():
+    print("=== Testing Settings Defaults and Validation ===")
+    from shikibo.config import Settings, BAD_VALUE
+    import getpass
+    import socket
+    
+    # 1. Fallback default user_id and role when empty/missing
+    s1 = Settings()
+    expected_user = f"{getpass.getuser()}@{socket.gethostname()}"
+    assert s1.user_id == expected_user
+    assert s1.role == "__DEF__"
+    print("Success: Settings fallback user_id and role verified.")
+    
+    # 2. Length check (must be 4 or above)
+    try:
+        Settings(user_id="abc")
+        assert False, "Should have failed due to short user_id"
+    except BAD_VALUE as e:
+        print("Success: Short user_id correctly rejected:", e)
+        
+    try:
+        Settings(role="xyz")
+        assert False, "Should have failed due to short role"
+    except BAD_VALUE as e:
+        print("Success: Short role correctly rejected:", e)
+        
+    # 3. Reserved prefix/suffix starts/ends with __ for user defined names
+    try:
+        Settings(user_id="__myuser")
+        assert False, "Should have failed due to system reserved user_id prefix"
+    except BAD_VALUE as e:
+        print("Success: Reserved user_id prefix correctly rejected:", e)
+        
+    try:
+        Settings(user_id="myuser__")
+        assert False, "Should have failed due to system reserved user_id suffix"
+    except BAD_VALUE as e:
+        print("Success: Reserved user_id suffix correctly rejected:", e)
+        
+    try:
+        Settings(role="__myrole")
+        assert False, "Should have failed due to system reserved role prefix"
+    except BAD_VALUE as e:
+        print("Success: Reserved role prefix correctly rejected:", e)
+        
+    try:
+        Settings(role="myrole__")
+        assert False, "Should have failed due to system reserved role suffix"
+    except BAD_VALUE as e:
+        print("Success: Reserved role suffix correctly rejected:", e)
+        
+    # Explicitly using default role __DEF__ should be allowed
+    s2 = Settings(role="__DEF__")
+    assert s2.role == "__DEF__"
+    print("Success: Explicit __DEF__ role allowed.")
+    
+    print("=== SETTINGS VALIDATION TESTS PASSED SUCCESSFULLY! ===")
+
 if __name__ == "__main__":
     test_integration()
     test_coordinator_locks()
+    test_settings_validation()

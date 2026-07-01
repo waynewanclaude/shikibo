@@ -10,14 +10,10 @@ from typing import List, Dict, Any, Tuple, Optional
 import mimetypes
 import logging
 
-from shikibo.config import Settings
+from shikibo.config import Settings, BAD_VALUE
 from shikibo.storage import FileSystemStorage
 
 logger = logging.getLogger("shikibo.client")
-
-class BAD_VALUE(ValueError):
-    """Raised when an operation receives an invalid or empty parameter value."""
-    pass
 
 class ThreadMailClient:
     def __init__(self, settings: Settings, storage: FileSystemStorage = None):

@@ -1,12 +1,25 @@
 import os
 import getpass
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, ValidationError
  
+class BAD_VALUE(ValueError):
+    """Raised when an operation receives an invalid or empty parameter value."""
+    pass
+
 class Settings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    user_id: str = Field(default_factory=getpass.getuser)
+    def __init__(self, **data):
+        try:
+            super().__init__(**data)
+        except ValidationError as e:
+            msg = e.errors()[0]["msg"]
+            if msg.startswith("Value error, "):
+                msg = msg[len("Value error, "):]
+            raise BAD_VALUE(msg)
+
+    user_id: str = Field(default="")
     role: str = Field(default="")
     display_name: str = Field(default="")
     root_dir: str = Field(default=r"G:\My Drive\shikibo_test")
@@ -30,12 +43,25 @@ class Settings(BaseModel):
     @classmethod
     def resolve_paths(cls, data):
         if isinstance(data, dict):
-            # Resolve user_id
-            if "user_id" not in data or not data["user_id"]:
+            # Resolve user_id default
+            user_provided = False
+            if "user_id" in data and data["user_id"] is not None and str(data["user_id"]).strip() != "":
+                user_provided = True
+                
+            if not user_provided:
                 import getpass
-                data["user_id"] = getpass.getuser()
+                import socket
+                data["user_id"] = f"{getpass.getuser()}@{socket.gethostname()}"
+                
+            uid = data["user_id"]
+            if len(uid) < 4:
+                raise BAD_VALUE(f"Username '{uid}' must be 4 or more characters.")
+                
+            if user_provided:
+                if uid.startswith("__") or uid.endswith("__"):
+                    raise BAD_VALUE("User-defined username cannot start or end with '__' (system reserved).")
             
-            # Resolve display_name
+            # Resolve display_name default
             if "display_name" not in data or not data["display_name"]:
                 data["display_name"] = data["user_id"]
                 
@@ -44,8 +70,22 @@ class Settings(BaseModel):
             root = Path(root_dir_val).resolve()
             data["root_dir"] = str(root)
             
-            uid = data["user_id"]
-            role = data.get("role", "")
+            # Resolve role default
+            role_provided = False
+            if "role" in data and data["role"] is not None and str(data["role"]).strip() != "":
+                role_provided = True
+                
+            if not role_provided:
+                data["role"] = "__DEF__"
+                
+            role = data["role"]
+            if len(role) < 4:
+                raise BAD_VALUE(f"Role '{role}' must be 4 or more characters.")
+                
+            if role_provided:
+                if role != "__DEF__":
+                    if role.startswith("__") or role.endswith("__"):
+                        raise BAD_VALUE("User-defined role cannot start or end with '__' (system reserved).")
             
             # Build default paths if not explicitly configured
             if role:
