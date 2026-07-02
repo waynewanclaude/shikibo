@@ -162,20 +162,13 @@ async function pollUpdates() {
 
 async function togglePauseResume() {
     const btn = document.getElementById("btn-pause-resume");
-    const timeline = document.getElementById("message-timeline");
     pollingPaused = !pollingPaused;
     
     if (pollingPaused) {
         btn.innerHTML = '<strong>Pause</strong> <span class="transition-target">-&gt; Run</span>';
-        if (timeline) {
-            timeline.style.overflowY = "auto";
-        }
         showScanStatus("Updates paused");
     } else {
         btn.innerHTML = '<strong>Run</strong> <span class="transition-target">-&gt; Pause</span>';
-        if (timeline) {
-            timeline.style.overflowY = "hidden";
-        }
         showScanStatus("Updates resumed");
         await refreshAll();
         if (activeThreadId) {
@@ -304,12 +297,8 @@ function selectThread(threadId, title, desc, status, hostname, createdAt, creato
         pauseBtn.style.display = "inline-block";
         if (pollingPaused) {
             pauseBtn.innerHTML = '<strong>Pause</strong> <span class="transition-target">-&gt; Run</span>';
-            const timeline = document.getElementById("message-timeline");
-            if (timeline) timeline.style.overflowY = "auto";
         } else {
             pauseBtn.innerHTML = '<strong>Run</strong> <span class="transition-target">-&gt; Pause</span>';
-            const timeline = document.getElementById("message-timeline");
-            if (timeline) timeline.style.overflowY = "hidden";
         }
     }
     const copyBtn = document.getElementById("btn-copy-selected");
