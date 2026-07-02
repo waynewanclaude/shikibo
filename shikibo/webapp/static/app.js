@@ -166,9 +166,13 @@ async function togglePauseResume() {
     
     if (pollingPaused) {
         btn.innerHTML = '<strong>Pause</strong> <span class="transition-target">-&gt; Run</span>';
+        btn.classList.add("btn-pause-state");
+        btn.classList.remove("btn-run-state");
         showScanStatus("Updates paused");
     } else {
         btn.innerHTML = '<strong>Run</strong> <span class="transition-target">-&gt; Pause</span>';
+        btn.classList.add("btn-run-state");
+        btn.classList.remove("btn-pause-state");
         showScanStatus("Updates resumed");
         await refreshAll();
         if (activeThreadId) {
@@ -297,8 +301,12 @@ function selectThread(threadId, title, desc, status, hostname, createdAt, creato
         pauseBtn.style.display = "inline-block";
         if (pollingPaused) {
             pauseBtn.innerHTML = '<strong>Pause</strong> <span class="transition-target">-&gt; Run</span>';
+            pauseBtn.classList.add("btn-pause-state");
+            pauseBtn.classList.remove("btn-run-state");
         } else {
             pauseBtn.innerHTML = '<strong>Run</strong> <span class="transition-target">-&gt; Pause</span>';
+            pauseBtn.classList.add("btn-run-state");
+            pauseBtn.classList.remove("btn-pause-state");
         }
     }
     const copyBtn = document.getElementById("btn-copy-selected");

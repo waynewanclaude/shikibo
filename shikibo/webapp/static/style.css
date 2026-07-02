@@ -730,4 +730,28 @@ h3 {
     border-color: var(--primary-color) !important;
 }
 
+/* Pause/Resume State Button Custom Styling */
+.btn-pause-state {
+    background-color: var(--danger-color) !important;
+    color: #ffffff !important;
+    border-color: var(--danger-color) !important;
+}
+.btn-pause-state:hover {
+    background-color: var(--danger-hover) !important;
+    border-color: var(--danger-hover) !important;
+    color: #ffffff !important;
+}
+
+.btn-run-state {
+    background-color: #198754 !important; /* Premium Bootstrap success green */
+    color: #ffffff !important;
+    border-color: #198754 !important;
+}
+.btn-run-state:hover {
+    background-color: #157347 !important;
+    border-color: #157347 !important;
+    color: #ffffff !important;
+}
+
+
 
